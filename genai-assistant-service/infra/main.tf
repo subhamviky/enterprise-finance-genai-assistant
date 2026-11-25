@@ -28,7 +28,7 @@ locals {
     FIRESTORE_DATABASE           = var.firestore_database
     GOOGLE_CLOUD_PROJECT         = var.project_id
     E2A_IDENTITY_SOURCE          = "gcp_cloud_run"
-    E2A_IDENTITY_TRUSTED_ISSUERS = jsonencode(["https://accounts.google.com"])
+    E2A_IDENTITY_TRUSTED_ISSUERS = jsonencode(["https://accounts.google.com", "accounts.google.com"]) # service accounts: with https://, people: without
     E2A_IDENTITY_SUBJECT_ROLES   = jsonencode(var.identity_subject_roles)
     E2A_WORKLOAD_IDENTITY        = "gcp_id_token"
     RECONCILIATION_API_URL       = var.reconciliation_api_url
