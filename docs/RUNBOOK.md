@@ -124,7 +124,11 @@ Then, the same way (the stack directory, `tfvars.py STACK --landscape ... --bind
 | 4 | order-to-cash | `order-to-cash-agentic-ai/o2c-agent-service/infra` | `o2c` |
 | 5 | the assistant | `enterprise-finance-genai-assistant/genai-assistant-service/infra` | `assistant` |
 
-After each apply, copy the service's Cloud Run URL (`terraform output`) into `deploy/gcp/landscape.vars` and into the bindings that name it (`SETTLEMENT_API_URL`, `RECONCILIATION_API_URL`, `AUDIT_API_URL`, `O2C_API_URL`), then re-apply the stacks that call it. Settlement's URL is needed by reconciliation, audit-ai, O2C and the assistant; do the first round of applies, fill in the URLs, and apply the four again.
+**Callers that do not exist yet.** A Cloud Run `run.invoker` grant to a service account that has not been created fails with `Service account ... does not exist`. Settlement is applied first, before `recon-app`, `genai-app`, `audit-app` and `o2c-agent-service-dev` exist, so for the first round of applies give reconciliation, audit-ai, O2C and settlement only the deployer account in `INVOKER_MEMBERS`; when all five stacks exist, restore the full lists and apply those four stacks again (they only add grants). The assistant's callers (the two people and the scenario accounts) exist from the foundation and can be set from the start.
+
+**First apply of settlement.** Cloud Run and the ledger VM are created in parallel, so the service may fail its start-up check before the database accepts connections. Wait a minute and apply again. The password secret is read by the VM and by Cloud Run; store it **without a trailing newline** (`tr -d '\n'`, as above): PostgreSQL strips one when it reads a password file and Cloud Run does not, and with a newline the service is refused with `password authentication failed`.
+
+After each apply, copy the service's Cloud Run URL (`terraform output`; O2C prints it as `service_uri`) into `deploy/gcp/landscape.vars` and into the bindings that name it (`SETTLEMENT_API_URL`, `RECONCILIATION_API_URL`, `AUDIT_API_URL`, `O2C_API_URL`), then re-apply the stacks that call it. Settlement's URL is needed by reconciliation, audit-ai, O2C and the assistant; do the first round of applies, fill in the URLs, and apply the four again.
 
 The free tier allows **three** Cloud Scheduler jobs for the whole account; the landscape uses exactly three (settlement's maintenance, reconciliation's run, O2C's combined job).
 
@@ -132,7 +136,9 @@ The free tier allows **three** Cloud Scheduler jobs for the whole account; the l
 
 1. Repository variables for `enterprise-finance-genai-assistant` (Settings, Secrets and variables, Actions, Variables): `GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOYER_SA` (foundation outputs `workload_identity_provider` and `deployer_service_account`), the five `*_API_URL`, and `SCENARIO_INVESTIGATOR_SA` and `SCENARIO_APPROVER_SA` (output `scenario_service_accounts`).
 2. Make the two scenario accounts the two people: put them in the assistant's `INVOKER_MEMBERS` and `IDENTITY_SUBJECT_ROLES` (`tenant:acme` and `investigator` or `finance-approver`), and give `genai-app` its roles in the other systems' maps; apply the assistant and the systems again.
-3. Actions, `landscape-gcp`, Run workflow, `target: cloud`. The steps and their results are in the run summary; keep it as evidence.
+3. Actions, `landscape-gcp`, **Run workflow**, `target: cloud` (not "Re-run jobs": that repeats the old commit). The steps and their results are in the run summary; keep it as evidence. Each run uses its own orders, bank lines and amounts, so the scenario can be repeated on the same landscape; step 7a (the requester approving their own proposal) runs only in the local run, because with real identities the approver account is a second person.
+
+Repository variables hold **values**, not descriptions: `GCP_WORKLOAD_IDENTITY_PROVIDER` is the whole `projects/NUMBER/locations/global/workloadIdentityPools/.../providers/...` string from `terraform output -raw workload_identity_provider`. Changing the assistant's code needs a new image and a new revision: build and push with `--build-arg POETRY_EXTRAS=gemini`, then `gcloud run services update genai-assistant-service --region us-central1 --image REPO/genai-assistant-service:latest` (Terraform does not redeploy an unchanged tag).
 
 ## 8. Verify
 
@@ -145,7 +151,12 @@ The free tier allows **three** Cloud Scheduler jobs for the whole account; the l
 | The assistant | the scenario's step table | all steps pass |
 | Latency and cold start (G-4, G-3 of the design document) | run the evaluation with `E2A_PROVIDER_PROFILE=gemini_api` and `E2A_SWAP_LIVE=true`; read `gcloud logging read` for request latency | record p50 and p95 |
 
+Measured on 25 November 2026 (the first passing cloud run, `docs/EVALUATION_REPORT.md`): the whole scenario took about 125 seconds; every step without a model call about one second; the two steps with a model call 79 and 24 seconds on the free-tier `gemini-3.5-flash-lite`; billing 0.00 of the trial credit.
+
 ## 9. Teardown, before the trial ends
+
+The trial started on 25 November 2026 and lasts 90 days, so it ends on or about **23 February 2027**; plan the evidence capture and the teardown for the week of 8 February 2027 (Billing shows the exact days left).
+
 
 In reverse order, from each stack directory: `terraform destroy`. Then the foundation (`force_destroy` is on for the state bucket, and the Firestore database is set to be deleted). Delete the repository variables, the Workload Identity provider and the Gemini key's secret. Keep the evidence: the scenario summary, the evaluation report, the billing report, screenshots. The Gemini API key itself stays valid.
 
@@ -171,4 +182,11 @@ In reverse order, from each stack directory: `terraform destroy`. Then the found
 | The ledger service does not start | no password version, or the VM cannot reach Artifact Registry | add the version, restart the VM (`gcloud compute instances reset`); check the mirrored image exists |
 | 401 from the assistant | the token's audience is not the assistant's URL | mint it with `--audiences=<the URL>` |
 | Pub/Sub messages pile up | audit-ai refuses the push | check its `run.invoker` for the push account; the dead-letter subscription holds the messages |
+| `Error acquiring the state lock` | an earlier `terraform apply` is still running (often waiting at `yes` in another Cloud Shell tab) or was cut off | find the other tab, or `kill -INT PID` (never `kill -9`); only if no terraform runs, `terraform force-unlock ID` |
+| `Service account X does not exist` on a `run.invoker` grant | the caller's stack has not been applied yet | Section 6: deployer only for the first round, full lists last |
+| The ledger service: `password authentication failed for user "settlement"` | the password secret has a trailing newline | add a new version without it (`tr -d '\n'`), apply |
+| 403 `issuer 'accounts.google.com' is not trusted` | a person's Google token spells the issuer without `https://` | trust both spellings in `E2A_IDENTITY_TRUSTED_ISSUERS` (the assistant's Terraform does) |
+| 403 `the caller is not granted tenant 'acme'` | the caller's token has no e-mail (the map is keyed by e-mail) | ask for the e-mail in the token (`id_token_include_email: true` in the workflow; the metadata server's `format=full` for a service) |
+| An investigation answers `NOT_FOUND` or takes over a minute | the free-tier model is busy (503) or wrapped its JSON in a code fence | the assistant now bounds each model call at 12 seconds and reads fenced JSON; if it still degrades, wait or switch the profile |
+| A repeat of the scenario fails at the statement or at the proposal | an earlier run's lines or open items of the same amount | the scenario uses its own data per run; pull the current `landscape/scenario.py` |
 | Billing shows a charge | something outside the free tier | find it in Billing, Reports, group by SKU; destroy it; do not upgrade |
