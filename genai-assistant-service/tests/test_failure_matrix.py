@@ -193,3 +193,17 @@ def test_the_same_adjustment_worded_differently_is_the_same_claim():
     assert workflow._request_fingerprint(reworded, None) == workflow._request_fingerprint(other_reason, None)
     bigger = {**base, "proposal": {**base["proposal"], "amount": "3.00"}}
     assert workflow._generate_idempotency_key(bigger, None) != workflow._generate_idempotency_key(base, None)
+
+
+def test_an_identifier_the_model_returns_with_sentence_punctuation_is_still_looked_up(make_assistant, landscape):
+    """Live: 'Status of order ORD-...?' made the model return the id with its question mark, and the tool refused it."""
+    import json
+    from genai_assistant_service.standins.landscape import ORDER as ORDER_PAID
+
+    class PunctuatedLLM(SimulatedLLMService):
+        async def process_inference(self, *args, **kwargs):
+            return {"status": "SUCCESS", "text": json.dumps({"intent": "EXPLAIN", "order_id": ORDER_PAID + "?"}),
+                    "tokens_used": 5}
+
+    answer = ask(make_assistant(llm=PunctuatedLLM()), f"Status of order {ORDER_PAID}?")
+    assert answer["status"] == "COMPLETED" and f"order:{ORDER_PAID}" in answer["records_read"], answer
