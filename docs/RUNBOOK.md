@@ -58,7 +58,7 @@ terraform output
 
 It enables the APIs and creates the image repository, the one free Firestore database, the state bucket, GitHub deployment through Workload Identity Federation, the budget alert, the secret for the Gemini key (without a value) and the two stand-in accounts of the scenario. Keep its outputs.
 
-**State.** The stacks keep their Terraform state in the working directory, which Cloud Shell preserves; do not delete it, you need it to destroy (Section 9). To keep it in the bucket instead, add this file to a stack directory, then run `terraform init -migrate-state`:
+**State.** The stacks keep their Terraform state in the working directory, which Cloud Shell preserves; do not delete it, you need it to destroy (Section 9). **To keep it in the bucket instead (recommended once the stacks exist), run `PROJECT=your-project-id bash enterprise-finance-genai-assistant/landscape/move-state.sh` from the folder that holds the four repositories**: it does what follows for all six stacks (a `backend_override.tf` in each, kept out of commits, then `terraform init -migrate-state`). By hand, add this file to a stack directory, then run `terraform init -migrate-state`:
 
 ```hcl
 # backend_override.tf (not committed)
