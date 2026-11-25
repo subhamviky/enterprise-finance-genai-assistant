@@ -179,3 +179,17 @@ def test_a_fenced_reply_in_every_agent_is_read(make_assistant, landscape):
 
     answer = ask(make_assistant(llm=AllFenced()), "Propose a write-off for bank line L-1001")
     assert answer["status"] in ("AWAITING_APPROVAL", "COMPLETED"), answer
+
+
+def test_the_same_adjustment_worded_differently_is_the_same_claim():
+    """A live model words its reason differently on each call; the claim must not depend on the wording."""
+    from genai_assistant_service.workflow.investigation_workflow import InvestigationWorkflow
+    workflow = InvestigationWorkflow()
+    base = {"tenant_id": "acme", "user_id": "ana", "line_id": "L-1",
+            "proposal": {"action": "WRITE_OFF", "settlement_id": "s-1", "amount": "2.50", "currency": "EUR"}}
+    reworded = {**base, "proposal": {**base["proposal"], "reason": "likely a bank fee"}}
+    other_reason = {**base, "proposal": {**base["proposal"], "reason": "short payment"}}
+    assert workflow._generate_idempotency_key(reworded, None) == workflow._generate_idempotency_key(other_reason, None)
+    assert workflow._request_fingerprint(reworded, None) == workflow._request_fingerprint(other_reason, None)
+    bigger = {**base, "proposal": {**base["proposal"], "amount": "3.00"}}
+    assert workflow._generate_idempotency_key(bigger, None) != workflow._generate_idempotency_key(base, None)
