@@ -138,3 +138,44 @@ def test_a_settlement_that_changed_since_the_proposal_is_not_adjusted(assistant,
     landscape.data["settlements"][S_SHORT]["status"] = "REVERSED"
     done = assistant.approve(approval, "acme", *APPROVER)
     assert done["status"] == "FAILED" and landscape.posted() == []
+
+
+class FencedLLM(SimulatedLLMService):
+    """Gemini's habit: JSON inside a code fence."""
+
+    async def process_inference(self, *args, **kwargs):
+        return {"status": "SUCCESS", "text": '```json\n{"intent": "INVESTIGATE", "line_id": "L-1001"}\n```', "tokens_used": 10}
+
+
+class ProseLLM(SimulatedLLMService):
+    """The model answers in words, not JSON."""
+
+    async def process_inference(self, *args, **kwargs):
+        return {"status": "SUCCESS", "text": "Sure, this looks like an unmatched bank line.", "tokens_used": 10}
+
+
+def test_a_fenced_model_reply_is_read(make_assistant, landscape):
+    answer = ask(make_assistant(llm=FencedLLM()), "Why is bank line L-1001 unmatched?")
+    assert answer["status"] == "COMPLETED" and "recon:L-1001" in answer["citations"], answer
+
+
+def test_an_unreadable_model_reply_falls_back_to_rules_and_still_investigates(make_assistant, landscape):
+    answer = ask(make_assistant(llm=ProseLLM()), "Why is bank line L-1001 unmatched?")
+    assert answer["status"] == "COMPLETED" and "recon:L-1001" in answer["citations"], answer
+
+
+def test_a_fenced_reply_in_every_agent_is_read(make_assistant, landscape):
+    """Intent, investigation and proposal all read JSON inside a code fence."""
+    import json as _json
+
+    class AllFenced(SimulatedLLMService):
+        async def process_inference(self, messages=None, *args, **kwargs):
+            system = str((messages or [{}])[0].get("content", ""))
+            if system.startswith("You are IntentAgent"):
+                body = {"intent": "PROPOSE", "line_id": "L-1001"}
+            else:
+                return await super().process_inference(messages, *args, **kwargs)
+            return {"status": "SUCCESS", "text": "```json\n" + _json.dumps(body) + "\n```", "tokens_used": 10}
+
+    answer = ask(make_assistant(llm=AllFenced()), "Propose a write-off for bank line L-1001")
+    assert answer["status"] in ("AWAITING_APPROVAL", "COMPLETED"), answer
