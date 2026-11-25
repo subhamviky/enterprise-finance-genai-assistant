@@ -224,6 +224,38 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - id: tok_settlement
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+          token_format: id_token
+          id_token_audience: ${{ vars.SETTLEMENT_API_URL }}
+          create_credentials_file: false
+      - id: tok_recon
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+          token_format: id_token
+          id_token_audience: ${{ vars.RECONCILIATION_API_URL }}
+          create_credentials_file: false
+      - id: tok_o2c
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+          token_format: id_token
+          id_token_audience: ${{ vars.O2C_API_URL }}
+          create_credentials_file: false
+      - id: tok_audit
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+          token_format: id_token
+          id_token_audience: ${{ vars.AUDIT_API_URL }}
+          create_credentials_file: false
       - uses: google-github-actions/setup-gcloud@v3
       - uses: actions/setup-python@v6
         with:
@@ -235,10 +267,11 @@ jobs:
       - name: The end-to-end scenario against the deployed services
         working-directory: genai-assistant-service
         run: |
-          # each call's ID token carries the audience Cloud Run IAM checks: the target service's URL
+          # the deployer's ID tokens (one per service, audience = its URL) come from the auth steps above; the two
+          # stand-in people are impersonated by the deployer, with the same audience rule for the assistant
+          export TOKEN_SETTLEMENT="${{ steps.tok_settlement.outputs.id_token }}" TOKEN_RECON="${{ steps.tok_recon.outputs.id_token }}" \
+                 TOKEN_O2C="${{ steps.tok_o2c.outputs.id_token }}" TOKEN_AUDIT="${{ steps.tok_audit.outputs.id_token }}"
           token() { gcloud auth print-identity-token --audiences="$1" "${@:2}"; }
-          export TOKEN_SETTLEMENT="$(token "$SETTLEMENT_URL")" TOKEN_RECON="$(token "$RECON_URL")" \
-                 TOKEN_O2C="$(token "$O2C_URL")" TOKEN_AUDIT="$(token "$AUDIT_URL")"
           export TOKEN_INVESTIGATOR="$(token "$GENAI_URL" --impersonate-service-account="${{ vars.SCENARIO_INVESTIGATOR_SA }}" --include-email)"
           export TOKEN_APPROVER="$(token "$GENAI_URL" --impersonate-service-account="${{ vars.SCENARIO_APPROVER_SA }}" --include-email)"
           poetry run python ../landscape/scenario.py
