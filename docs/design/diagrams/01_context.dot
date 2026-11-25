@@ -1,0 +1,28 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>System context: genai-assistant-service and the three systems of record</b>>, fontcolor="#1F3864", nodesep=0.4, ranksep=0.55, pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9];
+  subgraph cluster_users { label=<<b>Callers (Google accounts)</b>>; style="rounded,filled"; fillcolor="#FBF3E6"; color="#D4A017";
+    inv [label="Investigator\n(asks, proposes)"]; app [label="Approver\n(a second person)"];
+  }
+  iam [label="Cloud Run IAM\nverifies the Google ID token", fillcolor="#FBF3E6", color="#D4A017"];
+  subgraph cluster_g { label=<<b>genai-assistant-service (Cloud Run, scale to zero)</b>>; style="rounded,filled"; fillcolor="#EAF2FA"; color="#2E75B6";
+    api [label="FastAPI routers\nask · approvals"];
+    wf [label="InvestigationWorkflow\nroute → gather → reason → execute"];
+    ag [label="Intent · Evidence · Investigator\nProposal · Execution agents"];
+    pol [label="Policy and governance\nlimits, four eyes, firewall, redaction"];
+    api -> wf -> ag; ag -> pol [style=dashed];
+  }
+  gem [label="Gemini Developer API\n(free tier, optional)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  fs [label="Firestore (default)\ncollection genai:\napprovals, claims, receipts", fillcolor="#E6F4F5", color="#0F7C8C"];
+  sm [label="Secret Manager\nGemini key", fillcolor="#E6F4F5", color="#0F7C8C"];
+  subgraph cluster_sys { label=<<b>Systems of record (each private behind Cloud Run IAM)</b>>; style="rounded,filled"; fillcolor="#F2F2F2"; color="#7F7F7F";
+    rec [label="reconciliation-service\nexceptions, bank lines (read)"];
+    set [label="settlement-service\nsettlements, events (read)\nadjustments (the one write)"];
+    o2c [label="o2c-agent-service\norders (read)"];
+    aud [label="audit-ai-service\nfindings (read)"];
+  }
+  inv -> iam; app -> iam; iam -> api [label="verified token"];
+  ag -> gem [style=dashed, label="model steps"]; gem -> sm [style=dotted, dir=none];
+  api -> fs; ag -> rec; ag -> set [label="own ID token"]; ag -> o2c; ag -> aud;
+}

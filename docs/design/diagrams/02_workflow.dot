@@ -1,0 +1,21 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>The investigation workflow, and where a person must decide</b>>, fontcolor="#1F3864", nodesep=0.35, ranksep=0.5, pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9];
+  q [label="Question", shape=oval, fillcolor="#FBF3E6", color="#D4A017"];
+  route [label="route\nIntentAgent (model)\nfallback: rules"];
+  gather [label="gather\nEvidenceAgent\nreads, no model"];
+  inv [label="reason\nInvestigatorAgent (model)\ncitations checked\nfallback: verified facts"];
+  prop [label="reason\nProposalAgent (model)\npolicy decides\nfallback: no proposal"];
+  ans [label="Answer with\ncitations", shape=oval, fillcolor="#E6F4F5", color="#0F7C8C"];
+  pause [label="PAUSED\nan approval is stored", shape=box, fillcolor="#FBF3E6", color="#D4A017"];
+  ex [label="execute (material)\nExecutionAgent\none posting, read back", fillcolor="#EAF2FA", color="#2E75B6"];
+  rec [label="Receipt kept\nwith the approval", shape=oval, fillcolor="#E6F4F5", color="#0F7C8C"];
+  stop [label="Help text\nnothing read", shape=oval, fillcolor="#F2F2F2", color="#7F7F7F"];
+  q -> route; route -> gather [label="INVESTIGATE\nEXPLAIN\nPROPOSE"]; route -> stop [label="UNSUPPORTED", style=dashed];
+  gather -> inv [label="investigate,\nexplain"]; gather -> prop [label="propose"];
+  inv -> ans; prop -> pause [label="valid proposal"]; prop -> ans [label="no proposal", style=dashed];
+  pause -> ex [label="a second person with\nthe approver role approves\n(never the requester)"];
+  pause -> ans [label="rejected: nothing posted", style=dashed];
+  ex -> rec;
+}
