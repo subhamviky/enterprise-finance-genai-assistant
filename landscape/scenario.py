@@ -168,6 +168,14 @@ def main() -> None:
               "currency": "EUR", "counterparty_account": "ACC-3000", "reference": None}]
     results = call("POST", f"{RECON}/api/v1/statements", json=lines, headers=system("RECON")).json()["results"]
     statuses = {r["line_id"]: r["status"] for r in results}
+    if "QUEUED" in statuses.values():            # deployed: the lines cross Pub/Sub; wait until each is decided
+        def decided():
+            now = {}
+            for line_id in statuses:
+                r = call("GET", f"{RECON}/service/v1/lines/{line_id}", headers=system("RECON"))
+                now[line_id] = r.json().get("status") if r.status_code == 200 else None
+            return now if all(v in ("MATCHED", "EXCEPTION") for v in now.values()) else None
+        statuses = eventually(decided, "reconciliation to decide both bank lines", 120)
     step("4 The statement: one line matches, the short payment is an exception",
          statuses == {"BANK-001": "MATCHED", "BANK-002": "EXCEPTION"}, json.dumps(statuses))
 
