@@ -46,6 +46,7 @@ INVESTIGATOR, APPROVER = "ana.investigator@acme.example", "bo.approver@acme.exam
 TODAY = datetime.date.today().isoformat()
 transcript = []
 RUN = os.getenv("SCENARIO_RUN") or uuid.uuid4().hex[:6]       # a repeat run on the same landscape starts clean
+SCANNERS = 2 + int(RUN, 16) % 20          # units: the settlement's amount differs from earlier runs' open items
 L1, L2 = f"BANK-{RUN}-1", f"BANK-{RUN}-2"
 
 
@@ -145,9 +146,9 @@ def main() -> None:
         return data
 
     printers = order("Order 3 units of SKU-100 for customer CUST-ACME", "printers")
-    scanners = order("Order 2 units of SKU-200 for customer CUST-ACME", "scanners")
+    scanners = order(f"Order {SCANNERS} units of SKU-200 for customer CUST-ACME", "scanners")
     p_sid, s_sid = printers["order"]["settlement_id"], scanners["order"]["settlement_id"]
-    step("1 Orders for 3 printers and 2 scanners are paid",
+    step("1 Orders for 3 printers and some scanners are paid",
          printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID",
          f"{printers['order']['order_id']} {printers['order']['amount']} EUR; {scanners['order']['order_id']} "
          f"{scanners['order']['amount']} EUR")
@@ -167,8 +168,8 @@ def main() -> None:
     call("POST", f"{RECON}/api/v1/settlements/poll", headers=system("RECON"))
     lines = [{"line_id": L1, "bank_txn_id": f"TXN-{RUN}-1", "value_date": TODAY, "amount": printers["order"]["amount"],
               "currency": "EUR", "counterparty_account": "ACC-3000", "reference": p_sid},
-             {"line_id": L2, "bank_txn_id": f"TXN-{RUN}-2", "value_date": TODAY, "amount": "168.50",
-              "currency": "EUR", "counterparty_account": "ACC-3000", "reference": None}]
+             {"line_id": L2, "bank_txn_id": f"TXN-{RUN}-2", "value_date": TODAY, "amount": str(Decimal(str(scanners["order"]["amount"])) - Decimal("2.50")),
+              "currency": "EUR", "counterparty_account": "ACC-3000", "reference": f"SCN-{RUN}"}]   # no settlement id: no exact match
     results = call("POST", f"{RECON}/api/v1/statements", json=lines, headers=system("RECON")).json()["results"]
     statuses = {r["line_id"]: r["status"] for r in results}
     if "QUEUED" in statuses.values():            # deployed: the lines cross Pub/Sub; wait until each is decided
