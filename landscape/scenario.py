@@ -87,7 +87,7 @@ def person(email: str, role: str, tenant: str = TENANT) -> dict:
 
 
 def call(method: str, url: str, **kwargs) -> httpx.Response:
-    return httpx.request(method, url, timeout=60, **kwargs)
+    return httpx.request(method, url, timeout=150, **kwargs)
 
 
 def ask(text: str, headers: dict, key: str = None) -> dict:
