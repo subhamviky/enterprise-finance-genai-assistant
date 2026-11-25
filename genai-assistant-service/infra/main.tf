@@ -40,6 +40,11 @@ locals {
     # agent's deterministic fallback answers within seconds instead of after the SDK's 60 s default
     LLM_SDK_TIMEOUT     = "12"
     LLM_SDK_MAX_RETRIES = "1"
+    # the account's free limits for gemini-3.5-flash-lite are 15 requests and 250,000 tokens a minute and 500 a day;
+    # the process stays under them with a margin (E2A refuses a call over a limit before it leaves the process)
+    LLM_MAX_RPM                 = "12"
+    LLM_MAX_TPM                 = "200000"
+    GEMINI_MAX_REQUESTS_PER_DAY = "400"
   }, var.llm_model_id == "" ? {} : { LLM_MODEL_ID = var.llm_model_id })
 }
 
