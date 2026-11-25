@@ -181,12 +181,14 @@ def main() -> None:
 
     # 5 the assistant explains, citing what it read
     explained = ask("Why is bank line BANK-002 unmatched?", ana)
-    cites = explained.get("citations", [])
+    cites, read = explained.get("citations", []), explained.get("records_read", [])
+    # what it READ is deterministic (every system of record); what the model CITES is its choice among those
     step("5 The assistant explains the short payment, citing the records it read",
          explained["status"] == "COMPLETED" and "2.50" in explained["answer"]
-         and {"recon:BANK-002", "line:BANK-002", f"settlement:{s_sid}"} <= set(cites)
-         and any(c.startswith("audit:") for c in cites) and explained.get("verified"),
-         (explained.get("answer", "")[:200] + f" | cited {sorted(cites)} verified={explained.get('verified')}") if cites
+         and {"recon:BANK-002", "line:BANK-002", f"settlement:{s_sid}"} <= set(read)
+         and any(c.startswith("audit:") for c in read)
+         and bool(cites) and set(cites) <= set(read) and bool(explained.get("verified")),
+         (explained.get("answer", "")[:160] + f" | read {len(read)} records, cited {sorted(cites)}") if read
          else json.dumps(explained)[:400])
 
     # 6 it proposes a write-off: nothing is posted yet

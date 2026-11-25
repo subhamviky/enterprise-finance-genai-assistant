@@ -148,4 +148,5 @@ class AssistantService:
             bool(state.get("grounding_failure") or state.get("proposal_refused"))
         return self._answer(state, "COMPLETED", answer.get("answer", ""), degraded=degraded,
                             citations=answer.get("citations") or [], verified=answer.get("verified", []),
-                            inferred=answer.get("inferred", []), gaps=state.get("evidence_gaps") or [])
+                            inferred=answer.get("inferred", []), gaps=state.get("evidence_gaps") or [],
+                            records_read=[e["id"] for e in state.get("evidence") or []])
