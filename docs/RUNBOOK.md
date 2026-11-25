@@ -151,6 +151,20 @@ Repository variables hold **values**, not descriptions: `GCP_WORKLOAD_IDENTITY_P
 | The assistant | the scenario's step table | all steps pass |
 | Latency and cold start (G-4, G-3 of the design document) | run the evaluation with `E2A_PROVIDER_PROFILE=gemini_api` and `E2A_SWAP_LIVE=true`; read `gcloud logging read` for request latency | record p50 and p95 |
 
+**Running the 62-case sets against the real model** (about 190 model calls, inside the free daily limit of 500 and about 15 minutes at the process's 12 requests a minute; the four systems are the in-memory stand-ins, only the model is live). The key is read from Secret Manager into this one command's environment, never into a file:
+
+```bash
+cd ~/enterprise-finance-genai-assistant/genai-assistant-service
+python3 -m venv ~/venv-gate && . ~/venv-gate/bin/activate
+pip install --quiet -e ".[gemini]" pytest
+GEMINI_API_KEY="$(gcloud secrets versions access latest --secret=gemini-api-key)" \
+E2A_PROVIDER_PROFILE=gemini_api LLM_MODEL_ID=gemini-3.5-flash-lite \
+LLM_MAX_RPM=12 GEMINI_MAX_REQUESTS_PER_DAY=400 LLM_SDK_TIMEOUT=30 LLM_SDK_MAX_RETRIES=1 \
+python -m genai_assistant_service.release.gate --skip-tests --report ~/live-gate-report.json | tail -40
+```
+
+Expect some cases to fail on wording: the golden set's `contains` checks were written for the simulated model's phrasing (for example "short by 2.50"), so a correct answer in other words fails them. Read the report for what each failure was (wording, a refusal, a degraded answer after a 503) before judging the model.
+
 Measured on 25 November 2026 (the first passing cloud run, `docs/EVALUATION_REPORT.md`): the whole scenario took about 125 seconds; every step without a model call about one second; the two steps with a model call 79 and 24 seconds on the free-tier `gemini-3.5-flash-lite`; billing 0.00 of the trial credit.
 
 ## 9. Teardown, before the trial ends
