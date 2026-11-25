@@ -1,0 +1,49 @@
+# Governance of genai-assistant-service (hub design note GCP-01, Section 6). Policy data only:
+# services/governance.py builds the E2A stages from it on every request.
+
+# who may use which agent (the caller's acting role, from identity at ingress)
+entitlements:
+  IntentAgent: [investigator, finance-approver]
+  EvidenceAgent: [investigator, finance-approver]
+  InvestigatorAgent: [investigator, finance-approver]
+  ProposalAgent: [investigator, finance-approver]
+  ExecutionAgent: [investigator, finance-approver]
+
+# the tools each agent may call (least privilege; E2A applies it to io_read / io_modify)
+tools:
+  IntentAgent: []
+  EvidenceAgent: [get_reconciliation_exception, get_settlement, get_settlement_events, get_order, get_audit_findings]
+  InvestigatorAgent: []
+  ProposalAgent: []
+  ExecutionAgent: [get_settlement, post_adjustment]
+
+# what a proposal may be: the policy and risk check after the model drafts it
+adjustments:
+  WRITE_OFF: {max_amount: "250.00"}
+  REFUND: {max_amount: "1000.00"}
+
+# every adjustment waits for a second person in this role (four eyes)
+approval:
+  approver_role: finance-approver
+  four_eyes: true
+
+firewall:
+  max_query_chars: 2000
+  injection_patterns:
+    - "(?i)ignore (all )?(previous|prior|above) (instructions|rules)"
+    - "(?i)disregard (the|your) (system|previous) (prompt|instructions)"
+    - "(?i)you are now"
+    - "(?i)approve (it|this|the adjustment) (yourself|automatically|without)"
+    - "(?i)reveal (the|your) (system )?prompt"
+    - "(?i)execute (the )?(adjustment|write-?off|refund) (now|immediately|without approval)"
+
+redaction:
+  - {name: iban, pattern: "\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b", mask: "[IBAN]"}
+  # 13-19 digits, optionally in groups of four separated by spaces; never part of a hyphenated id (a UUID)
+  - {name: card, pattern: "(?<![\\w-])(?:\\d{4} ?){3}\\d{1,7}(?![\\w-])", mask: "[CARD]"}
+  - {name: email, pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", mask: "[EMAIL]"}
+
+capacity:
+  max_inflight: 8
+  # the Gemini free tier's budget per request (tokens); E2A's TokenBudgetStage reads it
+  max_token_budget: 6000

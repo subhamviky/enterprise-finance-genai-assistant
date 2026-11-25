@@ -24,5 +24,28 @@ jobs:
       - run: pipx install "poetry>=2.0,<3"
       - run: poetry install --no-interaction
       - run: poetry run pytest -q
+      - name: Start the Firestore emulator
+        run: |
+          docker run -d --name firestore -p 8085:8085 gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators \
+            gcloud emulators firestore start --host-port=0.0.0.0:8085
+          ready=""
+          for _ in $(seq 90); do docker logs firestore 2>&1 | grep -q "Dev App Server is now running" && ready=yes && break; sleep 2; done
+          [ -n "$ready" ] || { docker logs firestore 2>&1 | tail -5; echo "::error::the Firestore emulator did not start"; exit 1; }
+      - name: Tests again with runs, approvals and claims in Firestore (the Google Cloud binding)
+        env:
+          GENAI_STATE_BACKEND: firestore
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
+          GOOGLE_CLOUD_PROJECT: demo-genai
+        run: poetry run pytest -q -rs
+      - name: E2A conformance, strict
+        run: poetry run python -m e2a.conformance --strict src
       - name: Release gate (E2A ProjectReleaseGate; the tests ran in the step above)
-        run: poetry run python -m genai_assistant_service.release.gate --skip-tests --report release-gate-report.json --config '{"fleet_replica_count": 1, "faithfulness_threshold": 0.9}'
+        run: |
+          poetry run python -m genai_assistant_service.release.gate --skip-tests --report release-gate-report.json \
+            --config '{"fleet_replica_count": 1, "faithfulness_threshold": 0.9}'
+      - name: Keep the gate report (the evaluation evidence)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: genai-release-gate-report
+          path: genai-assistant-service/release-gate-report.json
