@@ -12,7 +12,7 @@ entitlements:
 # the tools each agent may call (least privilege; E2A applies it to io_read / io_modify)
 tools:
   IntentAgent: []
-  EvidenceAgent: [get_reconciliation_exception, get_settlement, get_settlement_events, get_order, get_audit_findings]
+  EvidenceAgent: [get_reconciliation_exception, get_bank_line, get_settlement, get_settlement_events, get_order, get_audit_findings]
   InvestigatorAgent: []
   ProposalAgent: []
   ExecutionAgent: [get_settlement, post_adjustment]

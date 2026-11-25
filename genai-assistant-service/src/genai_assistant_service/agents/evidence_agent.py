@@ -7,10 +7,11 @@ settlement, a settlement's events and audit findings. Each fact becomes an evide
 identifier (services/evidence.py). A system that does not answer is recorded as a gap, never
 guessed. No model step."""
 import logging
+from decimal import Decimal
 
 from e2a import BaseAgent
 
-from ..services.evidence import item
+from ..services.evidence import item, money
 
 MAX_SETTLEMENTS = 3
 
@@ -31,6 +32,12 @@ class EvidenceAgent(BaseAgent):
                     gaps.append(f"no reconciliation exception for bank line {state['line_id']}")
                 else:
                     evidence.append(item('recon', case['line_id'], self._case_text(case), case))
+                    line = io_read.call('get_bank_line', {'line_id': case['line_id']})
+                    if line.get('physical_success') and line.get('body'):
+                        evidence.append(item('line', case['line_id'], self._line_text(line['body'], case),
+                                             line['body']))
+                    else:
+                        gaps.append(f"bank line {case['line_id']} could not be read")
                     settlements += [c['settlement_id'] for c in case.get('candidates') or []]
                     proposal = case.get('proposal') or {}
                     settlements += list(proposal.get('settlement_ids') or [])
@@ -80,21 +87,36 @@ class EvidenceAgent(BaseAgent):
         text = f"Bank line {c['line_id']} is {c['kind']} ({c.get('status', 'OPEN')}): {c.get('detail')}"
         if c.get('candidates'):
             text += '; candidate settlements ' + ', '.join(
-                f"{o['settlement_id']} ({o['amount']} {o['currency']})" for o in c['candidates'])
+                f"{o['settlement_id']} ({money(o['amount'])} {o['currency']})" for o in c['candidates'])
         if c.get('proposal'):
             p = c['proposal']
             text += f"; reconciliation proposes {p.get('action')}" + (f": {p['rationale']}" if p.get('rationale') else '')
         return text
 
     @staticmethod
+    def _line_text(line, case):
+        """What was paid, and the difference to the nearest open item (arithmetic on the two records)."""
+        text = (f"Bank statement line {line['line_id']}: {money(line['amount'])} {line['currency']} from "
+                f"{line.get('counterparty_account')}, status {line.get('status')}"
+                + (f", reference \"{line['reference']}\"" if line.get('reference') else ', no reference'))
+        candidates = case.get('candidates') or []
+        if candidates:
+            sid, due = candidates[0]['settlement_id'], Decimal(str(candidates[0]['amount']))
+            diff = due - Decimal(str(line['amount']))
+            if diff:
+                text += (f"; against settlement {sid} ({due:.2f} {candidates[0]['currency']}) the line is "
+                         f"{'short' if diff > 0 else 'over'} by {abs(diff):.2f} {line['currency']}")
+        return text
+
+    @staticmethod
     def _order_text(o):
         return (f"Order {o['order_id']} is {o['status']}: {o['quantity']} x {o['sku']} for {o['customer_id']}, "
-                f"{o['amount']} {o['currency']}" + (f", settlement {o['settlement_id']}" if o.get('settlement_id') else '')
+                f"{money(o['amount'])} {o['currency']}" + (f", settlement {o['settlement_id']}" if o.get('settlement_id') else '')
                 + (f", reason: {o['reason']}" if o.get('reason') else ''))
 
     @staticmethod
     def _settlement_text(s):
-        return (f"Settlement {s['settlementId']} is {s['status']}: {s['amount']} {s['currency']} from "
+        return (f"Settlement {s['settlementId']} is {s['status']}: {money(s['amount'])} {s['currency']} from "
                 f"{s['payerAccount']} to {s['payeeAccount']}" + (f", reason: {s['reason']}" if s.get('reason') else ''))
 
     @staticmethod

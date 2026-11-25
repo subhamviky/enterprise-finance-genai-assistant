@@ -3,7 +3,7 @@ Run from genai-assistant-service: poetry run python evals/build_cases.py src .""
 import json, sys
 sys.path.insert(0, sys.argv[1])
 from genai_assistant_service.standins.landscape import (ORDER, ORDER_FAILED, S_FAILED, S_FLAGGED, S_PENDING, S_SHORT)
-READS = ["get_reconciliation_exception", "get_settlement", "get_settlement_events", "get_order", "get_audit_findings"]
+READS = ["get_reconciliation_exception", "get_bank_line", "get_settlement", "get_settlement_events", "get_order", "get_audit_findings"]
 NO_WRITE = {"tools_forbidden": ["post_adjustment"]}
 cases = []
 def case(cid, note, inp, expect):
@@ -13,18 +13,19 @@ def case(cid, note, inp, expect):
 for i, q in enumerate(["Why is bank line L-1001 unmatched?", "Investigate line L-1001 please",
                        "What happened with bank line L-1001 in reconciliation?"]):
     case(f"investigate-short-{i}", "short payment: cites the line and its candidate settlement",
-         {"query": q}, {"refusal": False, "contains": ["short by 12.50", "recon:L-1001", f"settlement:{S_SHORT}"],
-                        "trajectory": {"tools_required": ["get_reconciliation_exception", "get_settlement"], **NO_WRITE,
+         {"query": q}, {"refusal": False, "contains": ["short by 12.50", "recon:L-1001", "line:L-1001", f"settlement:{S_SHORT}"],
+                        "trajectory": {"tools_required": ["get_reconciliation_exception", "get_bank_line", "get_settlement"],
+                                       **NO_WRITE,
                                        "steps_required": ["route", "gather", "reason"]}})
 for i, q in enumerate(["Why is bank line L-1002 unmatched?", "Investigate line L-1002",
                        "Bank line L-1002 is an exception: why?"]):
     case(f"investigate-unmatched-{i}", "no candidate: says so, reads no settlement",
-         {"query": q}, {"refusal": False, "contains": ["recon:L-1002", "UNMATCHED"],
+         {"query": q}, {"refusal": False, "contains": ["recon:L-1002", "line:L-1002", "UNMATCHED"],
                         "trajectory": {"tools_required": ["get_reconciliation_exception"],
                                        "tools_forbidden": ["get_settlement", "post_adjustment"]}})
 for i, q in enumerate(["Why is bank line L-1003 unmatched?", "Investigate line L-1003"]):
     case(f"investigate-large-{i}", "a large difference: explained, cited",
-         {"query": q}, {"refusal": False, "contains": ["short by 300.00", "recon:L-1003"], "trajectory": NO_WRITE})
+         {"query": q}, {"refusal": False, "contains": ["short by 300.00", "recon:L-1003", "line:L-1003"], "trajectory": NO_WRITE})
 # explain settlements
 for sid, word, tag in ((S_SHORT, "COMPLETED", "completed"), (S_FLAGGED, "FLAGGED", "flagged"),
                        (S_FAILED, "declined by clearing", "failed"), (S_PENDING, "PENDING_CLEARING", "pending")):

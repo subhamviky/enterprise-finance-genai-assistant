@@ -8,11 +8,17 @@
 
 Only these identifiers may be cited; an answer citing anything else is refused."""
 import re
+from decimal import Decimal
 from typing import Any, Dict, List
 
 LINE_ID = re.compile(r"\b(?:bank\s+)?line\s+([A-Za-z0-9][A-Za-z0-9_.:-]{0,39})\b", re.I)
 SETTLEMENT_ID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b")
 ORDER_ID = re.compile(r"\bORD-[A-Z0-9]{10}\b")
+
+
+def money(value) -> str:
+    """An amount as two decimals, whatever the system returned (a JSON number 171.0, a string "171.00")."""
+    return f"{Decimal(str(value)).quantize(Decimal('0.01')):.2f}"
 
 
 def item(kind: str, key: str, summary: str, data: Any) -> Dict[str, Any]:

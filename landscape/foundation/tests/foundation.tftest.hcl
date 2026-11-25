@@ -37,6 +37,11 @@ run "one_repository_one_database_no_keys" {
   }
 
   assert {
+    condition     = length(google_service_account.scenario) == 2 && length(google_service_account_iam_member.deployer_mints_tokens) == 2
+    error_message = "Two stand-in people for the cloud scenario; only the deployer may mint their tokens."
+  }
+
+  assert {
     condition     = google_secret_manager_secret.gemini_api_key.secret_id == "gemini-api-key"
     error_message = "The Gemini key's secret exists, without a value in Terraform."
   }

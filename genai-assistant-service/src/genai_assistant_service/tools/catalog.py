@@ -13,7 +13,7 @@ Google ID token, E2A_WORKLOAD_IDENTITY=gcp_id_token); each system of record chec
 tenant and the action, itself.
 
 The four systems (their base URLs from the environment):
-  RECONCILIATION_API_URL  reconciliation-service  open exceptions (the service route)
+  RECONCILIATION_API_URL  reconciliation-service  open exceptions and bank lines (the service routes)
   SETTLEMENT_API_URL      settlement-service      settlements, events, adjustments (the ledger)
   O2C_API_URL             o2c-agent-service       orders
   AUDIT_API_URL           audit-ai-service        audit findings per settlement
@@ -130,6 +130,10 @@ def tools(env: Dict[str, str] = None, transports: Dict[str, Any] = None) -> Dict
         # reconciliation-service's service route (reconciliation.read): the exceptions, filtered by line
         "get_reconciliation_exception": HttpJsonTool(
             "get_reconciliation_exception", url(recon), "GET", "/service/v1/exceptions", transport=t(recon)),
+        # one bank line (what was paid): reconciliation-service's service route, reconciliation.read
+        "get_bank_line": HttpJsonTool(
+            "get_bank_line", url(recon), "GET", "/service/v1/lines/{line_id}", required=("line_id",),
+            transport=t(recon)),
         "get_settlement": HttpJsonTool(
             "get_settlement", url(settlement), "GET", "/api/v1/settlements/{settlement_id}",
             required=("settlement_id",), transport=t(settlement)),
