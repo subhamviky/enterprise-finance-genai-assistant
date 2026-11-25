@@ -15,15 +15,15 @@ def b64(obj) -> str:
     return base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")
 
 
-def as_(email, tenant="acme"):
-    token = f"{b64({'alg': 'RS256'})}.{b64({'iss': 'https://accounts.google.com', 'email': email})}.c2ln"
+def as_(email, tenant="acme", iss="https://accounts.google.com"):
+    token = f"{b64({'alg': 'RS256'})}.{b64({'iss': iss, 'email': email})}.c2ln"
     return {"Authorization": f"Bearer {token}", "X-Tenant-Id": tenant}
 
 
 @pytest.fixture
 def client(assistant, monkeypatch):
     monkeypatch.setenv("E2A_IDENTITY_SOURCE", "gcp_cloud_run")
-    monkeypatch.setenv("E2A_IDENTITY_TRUSTED_ISSUERS", '["https://accounts.google.com"]')
+    monkeypatch.setenv("E2A_IDENTITY_TRUSTED_ISSUERS", '["https://accounts.google.com", "accounts.google.com"]')
     monkeypatch.setenv("E2A_IDENTITY_SUBJECT_ROLES", json.dumps({
         ANA: ["tenant:acme", "investigator"], BO: ["tenant:acme", "finance-approver"]}))
     return TestClient(build_app(assistant))
@@ -57,3 +57,9 @@ def test_no_token_an_ungranted_tenant_or_a_stranger_is_refused(client, landscape
 
 def test_an_unknown_approval_is_404(client):
     assert client.post("/api/v1/approvals/nope/approve", headers=as_(BO)).status_code == 404
+
+
+def test_a_person_s_google_token_has_the_issuer_without_https(client):
+    """gcloud auth print-identity-token for a person carries iss=accounts.google.com (live finding, GCP-01)."""
+    body = {"text": "Why is bank line L-1001 unmatched?"}
+    assert client.post("/api/v1/ask", json=body, headers=as_(ANA, iss="accounts.google.com")).status_code == 200
