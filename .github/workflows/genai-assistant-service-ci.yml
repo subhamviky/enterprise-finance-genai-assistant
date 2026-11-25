@@ -3,9 +3,9 @@ name: genai-assistant-service ci
 on:
   push:
     branches: [main]
-    paths: ["genai-assistant-service/**", ".github/workflows/genai-assistant-service-*.yml"]
+    paths: ["genai-assistant-service/**", "landscape/**", ".github/workflows/genai-assistant-service-*.yml"]
   pull_request:
-    paths: ["genai-assistant-service/**", ".github/workflows/genai-assistant-service-*.yml"]
+    paths: ["genai-assistant-service/**", "landscape/**", ".github/workflows/genai-assistant-service-*.yml"]
 
 permissions:
   contents: read
@@ -49,3 +49,25 @@ jobs:
         with:
           name: genai-release-gate-report
           path: genai-assistant-service/release-gate-report.json
+
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [genai-assistant-service/infra, landscape/foundation]   # the assistant, the landscape's foundation
+    defaults:
+      run:
+        working-directory: ${{ matrix.stack }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.17.1"
+          terraform_wrapper: false
+      - name: fmt, validate and test against the mock provider (no cloud account)
+        run: |
+          terraform init -backend=false -input=false
+          terraform fmt -check -recursive
+          terraform validate
+          terraform test

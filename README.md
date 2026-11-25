@@ -61,3 +61,13 @@ which keep their HTTP contracts and guarantees (idempotent adjustments, tenant c
 | `evals/golden.json` | 53 cases: grounding and citations, tool choice, proposals within and beyond policy, approvals, unsupported and ambiguous requests, unknown identifiers, model and system outages, cross-tenant |
 | `evals/redteam.json` | prompt injection in the request and inside a record; personal data in the request |
 | CI | tests, a second run with the state in Firestore (emulator), strict E2A conformance, the release gate and its report, Terraform checks, the image with a Trivy scan |
+
+## On Google Cloud (free tier)
+
+| Folder | What |
+|---|---|
+| [`landscape/foundation`](landscape/foundation) | applied once for the whole landscape: the APIs, one Artifact Registry repository (a cleanup policy keeps it within the free 0.5 GB), the project's one free Firestore database (shared; each service keeps its own collections), a state bucket, GitHub Actions deployment through Workload Identity Federation (no JSON key), a budget alert at the first cent, and the Gemini key's secret (its value is added by hand) |
+| [`genai-assistant-service/infra`](genai-assistant-service/infra) | the assistant: Cloud Run scaled to zero with one instance, private (Cloud Run IAM), its state in Firestore, its own Google ID token to the four systems, Gemini's free tier with the key from Secret Manager |
+| [`deploy/gcp`](deploy/gcp) | `landscape.vars` (the values every repository shares) and `binding.vars` (the assistant's): placeholders until the account exists |
+
+Free-tier limits are enforced by the configuration: Always Free regions only, `simulated` or `gemini_api` models only, never a public service. CI plans both stacks against a mock provider.

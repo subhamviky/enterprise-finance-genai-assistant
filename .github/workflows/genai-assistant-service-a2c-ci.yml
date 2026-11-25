@@ -70,7 +70,7 @@ jobs:
       - name: Build the container image
         run: docker build -t genai-assistant-service:${{ github.sha }} .
       - name: Scan the image (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "genai-assistant-service:${{ github.sha }}"
           severity: CRITICAL,HIGH
