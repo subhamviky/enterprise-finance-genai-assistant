@@ -130,10 +130,19 @@ def main() -> None:
     ana, bo = person(INVESTIGATOR, "investigator"), person(APPROVER, "finance-approver")
 
     # 1 an order, paid through settlement-service
-    printers = call("POST", f"{O2C}/api/v1/assistant", json={"text": "Order 3 units of SKU-100 for customer CUST-ACME"},
-                    headers=sales).json()
-    scanners = call("POST", f"{O2C}/api/v1/assistant", json={"text": "Order 2 units of SKU-200 for customer CUST-ACME"},
-                    headers=sales).json()
+    def order(text: str) -> dict:
+        r = call("POST", f"{O2C}/api/v1/assistant", json={"text": text}, headers=sales)
+        body = r.text[:400]
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
+        if "order" not in data:                       # show what the service said instead of a bare KeyError
+            step("1 An order through o2c-agent-service", False, f"HTTP {r.status_code}: {body}")
+        return data
+
+    printers = order("Order 3 units of SKU-100 for customer CUST-ACME")
+    scanners = order("Order 2 units of SKU-200 for customer CUST-ACME")
     p_sid, s_sid = printers["order"]["settlement_id"], scanners["order"]["settlement_id"]
     step("1 Orders for 3 printers and 2 scanners are paid",
          printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID",
