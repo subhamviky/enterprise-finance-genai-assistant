@@ -1,16 +1,26 @@
 [tool.poetry]
 name = "genai-assistant-service"
 version = "0.1.0"
-description = ""
-authors = []
+description = "A finance investigator over reconciliation, settlement, order-to-cash and audit findings (hub design note GCP-01)."
+authors = ["Subham Gupta"]
 readme = "README.md"
 packages = [{include = "genai_assistant_service", from = "src"}]
 
 [tool.poetry.dependencies]
 python = ">=3.12"
-"e2a-framework" = { git = "https://github.com/subhamviky/e2a-framework.git", tag = "v1.9.1" }
+"e2a-framework" = { git = "https://github.com/subhamviky/e2a-framework.git", tag = "v1.11.0" }
+# Firestore for run state, approvals and claims (GENAI_STATE_BACKEND=firestore); Cloud Run identity (E2A v1.11.0)
+"e2a-adapters" = { git = "https://github.com/subhamviky/e2a-framework.git", tag = "v1.11.0", subdirectory = "adapters", extras = ["gcp"] }
+# Gemini through the Gemini Developer API (free tier) when E2A_PROVIDER_PROFILE=gemini_api.
+# Optional: install with `poetry install --extras gemini` (the image: --build-arg POETRY_EXTRAS=gemini).
+"e2a-managed-providers" = { git = "https://github.com/subhamviky/e2a-managed-providers.git", tag = "v0.2.0", extras = ["gemini-api"], optional = true }
+"httpx" = ">=0.27"
+"pyyaml" = ">=6.0"
 "fastapi" = ">=0.111"
 "uvicorn" = { version = ">=0.30", extras = ["standard"] }
+
+[tool.poetry.extras]
+gemini = ["e2a-managed-providers"]
 
 [tool.poetry.group.dev.dependencies]
 "pytest" = ">=8.2"
