@@ -20,6 +20,19 @@ SYSTEM = ("You are IntentAgent. Classify a finance investigator's request into o
           'states them. Answer as JSON {"intent": ..., "line_id": ..., "settlement_id": ..., "order_id": ...}.')
 
 
+def json_object(text: str) -> dict:
+    """The JSON object in a model reply: plain JSON, or wrapped in a code fence or a sentence (live finding,
+    GCP-01: Gemini answers ```json {...} ``` even when asked for JSON)."""
+    text = (text or "").strip()
+    try:
+        return json.loads(text)
+    except ValueError:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        return json.loads(text[start:end + 1])
+
+
 def rule_intent(text: str) -> dict:
     """The deterministic reading of a request (the fallback, and the simulated model)."""
     low = text.lower()
@@ -48,9 +61,13 @@ class IntentAgent(BaseAgent):
         """Accept the model output only if it is valid; 0.0 sends the request to _fallback."""
         text = (response or {}).get('text', '') if isinstance(response, dict) else str(response or '')
         try:
-            data = IntentAgentOutput.model_validate(json.loads(text)).model_dump(mode="json")
+            data = IntentAgentOutput.model_validate(json_object(text)).model_dump(mode="json")
         except (ValueError, ValidationError):
-            return 0.0
+            # An unreadable reply must not end the investigation (a fallback ends the workflow): read the request
+            # with the rules, mark the run degraded, and accept that reading so the evidence step still runs.
+            state.update(rule_intent(str(state.get('query', ''))))
+            state['degraded'] = True
+            return 1.0
         query = str(state.get('query', ''))
         for key in ('line_id', 'settlement_id', 'order_id'):          # only what the request says
             if data.get(key) and data[key] not in query:

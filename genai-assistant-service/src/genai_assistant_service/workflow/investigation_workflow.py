@@ -44,8 +44,11 @@ class InvestigationWorkflow(BaseWorkflow):
 
     @staticmethod
     def _proposal_content(state) -> str:
+        # what is proposed, not how the model worded it: the free-text reason differs from one model call to the
+        # next, and a different reason must not make the same write-off a second, postable proposal (live finding)
+        proposal = {k: v for k, v in (state.get('proposal') or {}).items() if k != 'reason'}
         return json.dumps({'tenant': state.get('tenant_id'), 'user': state.get('user_id'),
-                           'proposal': state.get('proposal')}, sort_keys=True)
+                           'line': state.get('line_id'), 'proposal': proposal}, sort_keys=True)
 
     def _generate_idempotency_key(self, state, ctx) -> str:
         """Without a client Idempotency-Key, the same proposal by the same person is one adjustment."""

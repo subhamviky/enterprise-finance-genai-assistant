@@ -36,6 +36,10 @@ locals {
     O2C_API_URL                  = var.o2c_api_url
     AUDIT_API_URL                = var.audit_api_url
     E2A_PROVIDER_PROFILE         = var.llm_profile
+    # the free-tier model sometimes answers 503 or slowly: bound each model call (12 s, one retry), so the
+    # agent's deterministic fallback answers within seconds instead of after the SDK's 60 s default
+    LLM_SDK_TIMEOUT     = "12"
+    LLM_SDK_MAX_RETRIES = "1"
   }, var.llm_model_id == "" ? {} : { LLM_MODEL_ID = var.llm_model_id })
 }
 

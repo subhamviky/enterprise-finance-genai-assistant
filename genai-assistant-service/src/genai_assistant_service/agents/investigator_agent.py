@@ -14,6 +14,7 @@ from e2a import BaseAgent
 from pydantic import ValidationError
 
 from ..services.evidence import as_text, ids
+from .intent_agent import json_object
 from .investigator_agent_output import InvestigatorAgentOutput
 
 SYSTEM = ("You are InvestigatorAgent, a finance investigator. Answer the question only from the evidence blocks "
@@ -38,7 +39,7 @@ class InvestigatorAgent(BaseAgent):
     def _evaluate_output(self, response, state, ctx):
         text = (response or {}).get('text', '') if isinstance(response, dict) else str(response or '')
         try:
-            answer = InvestigatorAgentOutput.model_validate(json.loads(text)).model_dump(mode="json")
+            answer = InvestigatorAgentOutput.model_validate(json_object(text)).model_dump(mode="json")
         except (ValueError, ValidationError):
             state['grounding_failure'] = 'not valid JSON for the answer schema'
             return 0.0
