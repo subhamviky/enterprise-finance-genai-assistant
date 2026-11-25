@@ -62,13 +62,22 @@ which keep their HTTP contracts and guarantees (idempotent adjustments, tenant c
 | `evals/redteam.json` | prompt injection in the request and inside a record; personal data in the request |
 | CI | tests, a second run with the state in Firestore (emulator), strict E2A conformance, the release gate and its report, Terraform checks, the image with a Trivy scan |
 
+## Documents
+
+| Document | What |
+|---|---|
+| [`docs/design/GenAI_Assistant_Design_Document.pdf`](docs/design/GenAI_Assistant_Design_Document.pdf) ([Markdown source](docs/design/GENAI_ASSISTANT_DESIGN.md)) | the design: requirements traced to the code, architecture, contracts, the failure-injection matrix, verification, gaps |
+| [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | the 53 golden and 9 red-team cases, the measures, and what the evidence does and does not prove |
+| [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | the cutover to Google Cloud on the free tier, operating, teardown, troubleshooting |
+| [`SECURITY.md`](SECURITY.md) | what the design guarantees, and where each guarantee is tested |
+
 ## On Google Cloud (free tier)
 
 | Folder | What |
 |---|---|
 | [`landscape/foundation`](landscape/foundation) | applied once for the whole landscape: the APIs, one Artifact Registry repository (a cleanup policy keeps it within the free 0.5 GB), the project's one free Firestore database (shared; each service keeps its own collections), a state bucket, GitHub Actions deployment through Workload Identity Federation (no JSON key), a budget alert at the first cent, and the Gemini key's secret (its value is added by hand) |
 | [`genai-assistant-service/infra`](genai-assistant-service/infra) | the assistant: Cloud Run scaled to zero with one instance, private (Cloud Run IAM), its state in Firestore, its own Google ID token to the four systems, Gemini's free tier with the key from Secret Manager |
-| [`deploy/gcp`](deploy/gcp) | `landscape.vars` (the values every repository shares) and `binding.vars` (the assistant's): placeholders until the account exists |
+| [`deploy/gcp`](deploy/gcp) | `landscape.vars` (the values every repository shares) and `binding.vars` (the assistant's): placeholders until the account exists; [`landscape/tfvars.py`](landscape/tfvars.py) turns them into one stack's Terraform inputs |
 
 Free-tier limits are enforced by the configuration: Always Free regions only, `simulated` or `gemini_api` models only, never a public service. CI plans both stacks against a mock provider.
 

@@ -1,0 +1,21 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Deployment on the Google Cloud free tier</b>>, fontcolor="#1F3864", nodesep=0.4, ranksep=0.55, pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9];
+  gh [label="GitHub Actions\nWorkload Identity Federation\n(no JSON key)", fillcolor="#FBF3E6", color="#D4A017"];
+  subgraph cluster_f { label=<<b>landscape/foundation (applied once)</b>>; style="rounded,filled"; fillcolor="#F2F2F2"; color="#7F7F7F";
+    ar [label="Artifact Registry\none repository, cleanup policy"]; tf [label="Cloud Storage\nTerraform state (private)"];
+    bud [label="Budget alert\nat the first cent"]; sec [label="Secret Manager\ngemini-api-key (no value in Terraform)"];
+    fsd [label="Firestore (default)\nthe one free database"];
+    ar -> tf -> bud -> sec -> fsd [style=invis];
+  }
+  subgraph cluster_a { label=<<b>genai-assistant-service/infra</b>>; style="rounded,filled"; fillcolor="#EAF2FA"; color="#2E75B6";
+    run [label="Cloud Run\nmin 0, max 1, CPU only during requests\nnever public (run.invoker: listed people)"];
+    sa [label="Service account genai-app\ndatastore.user, secret accessor"];
+    run -> sa [style=dashed];
+  }
+  gh -> ar [label="push image"]; gh -> run [label="terraform apply"]; gh -> tf [style=dashed];
+  run -> fsd [label="collection genai"]; run -> sec [label="key at start-up", style=dashed];
+  run -> sys [label="own Google ID token", lhead=cluster_s];
+  sys [label="the four systems of record\n(run.invoker granted to genai-app;\nroles in identity_subject_roles)", fillcolor="#E6F4F5", color="#0F7C8C"];
+}
