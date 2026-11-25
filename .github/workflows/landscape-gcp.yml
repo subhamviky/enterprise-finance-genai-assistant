@@ -230,6 +230,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
           token_format: id_token
+          id_token_include_email: true
           id_token_audience: ${{ vars.SETTLEMENT_API_URL }}
           create_credentials_file: false
       - id: tok_recon
@@ -238,6 +239,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
           token_format: id_token
+          id_token_include_email: true
           id_token_audience: ${{ vars.RECONCILIATION_API_URL }}
           create_credentials_file: false
       - id: tok_o2c
@@ -246,6 +248,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
           token_format: id_token
+          id_token_include_email: true
           id_token_audience: ${{ vars.O2C_API_URL }}
           create_credentials_file: false
       - id: tok_audit
@@ -254,6 +257,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
           token_format: id_token
+          id_token_include_email: true
           id_token_audience: ${{ vars.AUDIT_API_URL }}
           create_credentials_file: false
       - uses: google-github-actions/setup-gcloud@v3
