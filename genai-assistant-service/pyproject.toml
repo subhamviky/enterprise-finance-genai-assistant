@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "genai-assistant-service"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+packages = [{include = "genai_assistant_service", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+"e2a-framework" = { git = "https://github.com/subhamviky/e2a-framework.git", tag = "v1.9.1" }
+"fastapi" = ">=0.111"
+"uvicorn" = { version = ">=0.30", extras = ["standard"] }
+
+[tool.poetry.group.dev.dependencies]
+"pytest" = ">=8.2"
+"httpx" = ">=0.27"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

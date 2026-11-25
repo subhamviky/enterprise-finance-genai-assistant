@@ -1,0 +1,46 @@
+{
+  "tenant_id": "acme",
+  "context": {"source": "inline", "project_name": "genai-assistant-service", "package_name": "genai_assistant_service",
+              "runtime": "python", "runtime_version": "3.12", "build_tool": "poetry", "platform": "gcp",
+              "project_type": "fastapi_microservice", "include_paths": ["policies"]},
+  "harness": {
+    "generator_type": "e2a_inherited",
+    "e2a_contract": "1.2",
+    "provider_profile": "simulated",
+    "agents": [
+      {"name": "IntentAgent", "kind": "model",
+       "output_schema": {"type": "object", "required": ["intent"],
+                         "properties": {"intent": {"enum": ["INVESTIGATE", "EXPLAIN", "PROPOSE", "UNSUPPORTED"]},
+                                        "line_id": {"type": "string"}, "settlement_id": {"type": "string"},
+                                        "order_id": {"type": "string"}}}},
+      {"name": "EvidenceAgent", "kind": "deterministic",
+       "reads": ["get_reconciliation_exception", "get_settlement", "get_settlement_events", "get_order",
+                 "get_audit_findings"]},
+      {"name": "InvestigatorAgent", "kind": "model",
+       "output_schema": {"type": "object", "required": ["answer", "citations", "verified", "inferred"],
+                         "properties": {"answer": {"type": "string"},
+                                        "citations": {"type": "array", "items": {"type": "string"}},
+                                        "verified": {"type": "array", "items": {"type": "string"}},
+                                        "inferred": {"type": "array", "items": {"type": "string"}}}}},
+      {"name": "ProposalAgent", "kind": "model",
+       "output_schema": {"type": "object", "required": ["action", "settlement_id", "amount", "currency", "reason"],
+                         "properties": {"action": {"enum": ["WRITE_OFF", "REFUND", "NONE"]},
+                                        "settlement_id": {"type": "string"}, "amount": {"type": "string"},
+                                        "currency": {"type": "string"}, "reason": {"type": "string"}}}},
+      {"name": "ExecutionAgent", "kind": "deterministic", "reads": ["get_settlement"],
+       "writes": ["post_adjustment"]}
+    ],
+    "workflow": {"name": "InvestigationWorkflow", "steps": [
+      {"step": "route", "agent": "IntentAgent"},
+      {"step": "gather", "agent": "EvidenceAgent"},
+      {"step": "reason", "route_by": "intent",
+       "agents": {"INVESTIGATE": "InvestigatorAgent", "EXPLAIN": "InvestigatorAgent", "PROPOSE": "ProposalAgent"}},
+      {"step": "execute", "agent": "ExecutionAgent", "material": true}
+    ]},
+    "governance": {"stages": ["capacity", "token_budget", "firewall", "approval", "redaction"]}
+  },
+  "prompt": {"user_prompt": "A finance investigator over three systems of record (reconciliation, settlement, order-to-cash) and the audit findings: answers why a payment is unmatched or a settlement delayed or flagged, from their data with citations, separating verified from inferred; proposes a write-off or refund within policy; executes an adjustment only after a second person approves."},
+  "a2c_sdlc": {"enabled": true, "project_type": "FastAPI Microservice", "target_cloud": "gcp",
+               "mandatory_nfrs": ["Audit"],
+               "evaluation": {"set": "evals/golden.json", "redteam": "evals/redteam.json", "threshold": 0.9}}
+}

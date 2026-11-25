@@ -1,0 +1,253 @@
+{
+  "files": {
+    ".github/workflows/genai-assistant-service-a2c-ci.yml": "1abd38713917612f0481ceeda59b0a8a6c3b0e03137e91a5170446763c2a297d",
+    ".github/workflows/genai-assistant-service-ci.yml": "60fb624ee9d2971492a1fdb661f37dd94e987fb0f4bb7ff3c6ae68a22c862d3c",
+    "genai-assistant-service/.devcontainer/devcontainer.json": "436e891f984f45dfb02e865c24a9c058ed79646293ee7801c83373f3c30f1e07",
+    "genai-assistant-service/.dockerignore": "68037e5d506c8e78f3e283483bf9f8129ad72e8a6b791fa6b43a5062941fa7e0",
+    "genai-assistant-service/.env.example": "9174b5f6928641f46b9b97dd176e2fbafc5a020a320975a85e03f7d9fdc4ffd4",
+    "genai-assistant-service/.gitattributes": "05ef65504fbba693a90ab3798e7a6ac91fbde811ef18d6bba09ee62db7d60c59",
+    "genai-assistant-service/.gitignore": "f0800dcf1de617ff2881419f8f054dc42ab49d3ab038f67f645d99baf642b018",
+    "genai-assistant-service/Dockerfile": "9509acaeaaaedc38a1d968ae4c66eefb7e3c7eccebb0a165fde8f2fb948e5080",
+    "genai-assistant-service/LICENSE": "b58badfa024bf88d2cce2ac5102c26b7d14c513d16a70dbab631ebcd46474c2c",
+    "genai-assistant-service/Makefile": "b13240d062970ef8f4dc7d0168e060fa8d3738c5b24b05d105e1e289a26296ce",
+    "genai-assistant-service/README.md": "009c72b3f715a8bcba3350860f1225a6eb5cc4126d244a7c2aacb2e601b6ec81",
+    "genai-assistant-service/docker-compose.yml": "142ed7979a839cab1f64f060904932fb3e92f2916a0c0fd8ab1e6d4e4922529c",
+    "genai-assistant-service/docs/a2c/spec.md": "d84a0737c817bd72e49d41fb0df4b6ea4079783b9974cefd855a24489ede193b",
+    "genai-assistant-service/evals/golden.json": "6a41cf2017e6a7286c94547316c29ae2723483cd9efc3b94d0ff8cdbfa72dd83",
+    "genai-assistant-service/evals/redteam.json": "771a2248ab7dbd86c036f5d601d2fa6c229ce4c070773e2ec9ad844cd1f536c5",
+    "genai-assistant-service/infra/main.tf": "a46af7f5e67b354ac6a496be12ee821fe5998f0b8eb6e9d89863952a0d2ad86b",
+    "genai-assistant-service/infra/tests/gcp.tftest.hcl": "1020619845a3c9c4948826a0d45824a269a18ac1277a34573d61cd07deb17dac",
+    "genai-assistant-service/poetry.lock": "14e7bbabc4bd66b6a360d5953275cb56d6f046eacda8be763373797683722e39",
+    "genai-assistant-service/pyproject.toml": "13b6ac87a6dba80ad71b2df22f75f4baa4c7f2129f335ff52bff7e77ded9ffa5",
+    "genai-assistant-service/src/genai_assistant_service/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "genai-assistant-service/src/genai_assistant_service/agents/__init__.py": "a26fac8729dcadd29995ad56ff4b894bdb96d5796a31d0b61a5db92b8aee0cef",
+    "genai-assistant-service/src/genai_assistant_service/agents/evidence_agent.py": "2fd7ed0dedbf646a90ad86c893961d501a0070aff82ba848059dce93e8f64ce3",
+    "genai-assistant-service/src/genai_assistant_service/agents/execution_agent.py": "fb3a82c744ee22bab7fe356e0a3f6d4f8124dc1043a667bfbbab246418d1c9c2",
+    "genai-assistant-service/src/genai_assistant_service/agents/intent_agent.py": "03f30030fc8853fa15bc56e974c4f278570e8fa19e94bbfcb8102dff6d1755bd",
+    "genai-assistant-service/src/genai_assistant_service/agents/intent_agent_output.py": "47f4194a102fd8d88fdb5fcb466e660286610e76604fc685986f6acc70ca477b",
+    "genai-assistant-service/src/genai_assistant_service/agents/investigator_agent.py": "a6a19ff06002c57f7bbe2a97c3c3d4d9f96a603f01b3779bcf6ed5750320ccbb",
+    "genai-assistant-service/src/genai_assistant_service/agents/investigator_agent_output.py": "890259187ebd8c0dfb7c3e495be792a14786e4b8b5bf403da15ff23247c90621",
+    "genai-assistant-service/src/genai_assistant_service/agents/proposal_agent.py": "c5502c759b05bbb2ecb5d6a1230e0b3e411160c45110f093e4a634b90406485e",
+    "genai-assistant-service/src/genai_assistant_service/agents/proposal_agent_output.py": "06e9233ad21179828048c5d30101d0a29d0775f2bba7a6f83f638c95c0621366",
+    "genai-assistant-service/src/genai_assistant_service/config/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "genai-assistant-service/src/genai_assistant_service/generated/nfr.py": "3fc7dd43b5d82a455eaa4cd8acb0eb23df3e036283cf69a9d4b68206b689e3bc",
+    "genai-assistant-service/src/genai_assistant_service/generated/observability.py": "ea59e5615ca0f732eb2876598d14a7b73c617d1bdf6fd3550b418bed57a969eb",
+    "genai-assistant-service/src/genai_assistant_service/main.py": "7e2f83b1748e8504264b058a63372a85fa33978f2f10e1706c70a88c09d9b53f",
+    "genai-assistant-service/src/genai_assistant_service/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "genai-assistant-service/src/genai_assistant_service/release/__init__.py": "cbacf64e44b450b94a52076de5f86de19a07e2d39be732315fc45757f25d07c1",
+    "genai-assistant-service/src/genai_assistant_service/release/gate.py": "b0e9cbe0a93d188b84785f29ca67280c540b7a66a181cb2c8f7af84f9de90075",
+    "genai-assistant-service/src/genai_assistant_service/routers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "genai-assistant-service/src/genai_assistant_service/services/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "genai-assistant-service/src/genai_assistant_service/services/bindings.py": "8312b6de59721e4b936fbcf88c4ecc3f05b7ac88dc12abbe9a670f1602c093e3",
+    "genai-assistant-service/src/genai_assistant_service/services/governance.py": "7f6115edc35780ffcf87825ca288fea6399af14e06a0c7145a2379e79221a99a",
+    "genai-assistant-service/src/genai_assistant_service/services/validation.py": "9202bde08fe19983c3596eeb764951da66d8cdd1de49f54d0c64ce5bda6b07ea",
+    "genai-assistant-service/src/genai_assistant_service/tools/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "genai-assistant-service/src/genai_assistant_service/tools/catalog.py": "0fbb4399275c8e5f6f4c41484a4e3486def373f55ea78147b3d69a0633982cd8",
+    "genai-assistant-service/src/genai_assistant_service/workflow/__init__.py": "aaefc2224d1b69113bee941bb5cbd57b9dc271b25bc742cba2d2f4f5fb63af4d",
+    "genai-assistant-service/src/genai_assistant_service/workflow/investigation_workflow.py": "140af7036c0de60ebacab800342808aaafe9460b88e95751b5d87b8d854c6262",
+    "genai-assistant-service/tests/test_agents_contract.py": "5fbbc773d47ad8d168d45d2cbe14561ab3f8e793d15cc897d131c7d2b5c82452",
+    "genai-assistant-service/tests/test_bindings.py": "9e6172ad34a26d308bef20716a9f93f96350a8fc0cebbc888ed9dd4b6cc83103",
+    "genai-assistant-service/tests/test_conformance.py": "fdba6c66413ce60f90401347927d855323586132c05cd43375f9e5d1f8d9ab51",
+    "genai-assistant-service/tests/test_health.py": "0cd3b5760e684bf5e7edc4b7fec76953cc76755bf8ccf1c31060cf44bdb56a27",
+    "genai-assistant-service/tests/test_workflow.py": "8d2985947ceb95ea8d9b801cb0c1218958f99c770d875cd9d6db14d6d76d00ee"
+  },
+  "generator": "a2c-framework",
+  "request": {
+    "a2c_sdlc": {
+      "enabled": true,
+      "evaluation": {
+        "redteam": "evals/redteam.json",
+        "set": "evals/golden.json",
+        "threshold": 0.9
+      },
+      "mandatory_nfrs": [
+        "Audit"
+      ],
+      "project_type": "FastAPI Microservice",
+      "target_cloud": "gcp"
+    },
+    "context": {
+      "build_tool": "poetry",
+      "include_paths": [
+        "policies"
+      ],
+      "package_name": "genai_assistant_service",
+      "platform": "gcp",
+      "project_name": "genai-assistant-service",
+      "project_type": "fastapi_microservice",
+      "repository_layout": "monorepo",
+      "runtime": "python",
+      "runtime_version": "3.12",
+      "source": "inline"
+    },
+    "harness": {
+      "agents": [
+        {
+          "kind": "model",
+          "name": "IntentAgent",
+          "output_schema": {
+            "properties": {
+              "intent": {
+                "enum": [
+                  "INVESTIGATE",
+                  "EXPLAIN",
+                  "PROPOSE",
+                  "UNSUPPORTED"
+                ]
+              },
+              "line_id": {
+                "type": "string"
+              },
+              "order_id": {
+                "type": "string"
+              },
+              "settlement_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "intent"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "kind": "deterministic",
+          "name": "EvidenceAgent",
+          "reads": [
+            "get_reconciliation_exception",
+            "get_settlement",
+            "get_settlement_events",
+            "get_order",
+            "get_audit_findings"
+          ]
+        },
+        {
+          "kind": "model",
+          "name": "InvestigatorAgent",
+          "output_schema": {
+            "properties": {
+              "answer": {
+                "type": "string"
+              },
+              "citations": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inferred": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "verified": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "answer",
+              "citations",
+              "verified",
+              "inferred"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "kind": "model",
+          "name": "ProposalAgent",
+          "output_schema": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "WRITE_OFF",
+                  "REFUND",
+                  "NONE"
+                ]
+              },
+              "amount": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "settlement_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "settlement_id",
+              "amount",
+              "currency",
+              "reason"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "kind": "deterministic",
+          "name": "ExecutionAgent",
+          "reads": [
+            "get_settlement"
+          ],
+          "writes": [
+            "post_adjustment"
+          ]
+        }
+      ],
+      "e2a_contract": "1.2",
+      "generator_type": "e2a_inherited",
+      "governance": {
+        "stages": [
+          "capacity",
+          "token_budget",
+          "firewall",
+          "approval",
+          "redaction"
+        ]
+      },
+      "provider_profile": "simulated",
+      "workflow": {
+        "name": "InvestigationWorkflow",
+        "steps": [
+          {
+            "agent": "IntentAgent",
+            "step": "route"
+          },
+          {
+            "agent": "EvidenceAgent",
+            "step": "gather"
+          },
+          {
+            "agents": {
+              "EXPLAIN": "InvestigatorAgent",
+              "INVESTIGATE": "InvestigatorAgent",
+              "PROPOSE": "ProposalAgent"
+            },
+            "route_by": "intent",
+            "step": "reason"
+          },
+          {
+            "agent": "ExecutionAgent",
+            "material": true,
+            "step": "execute"
+          }
+        ]
+      }
+    },
+    "prompt": {
+      "user_prompt": "A finance investigator over three systems of record (reconciliation, settlement, order-to-cash) and the audit findings: answers why a payment is unmatched or a settlement delayed or flagged, from their data with citations, separating verified from inferred; proposes a write-off or refund within policy; executes an adjustment only after a second person approves."
+    },
+    "tenant_id": "acme"
+  },
+  "version": "1.5.0"
+}

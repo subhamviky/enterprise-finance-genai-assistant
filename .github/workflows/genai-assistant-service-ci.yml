@@ -1,0 +1,28 @@
+name: genai-assistant-service ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["genai-assistant-service/**", ".github/workflows/genai-assistant-service-*.yml"]
+  pull_request:
+    paths: ["genai-assistant-service/**", ".github/workflows/genai-assistant-service-*.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: genai-assistant-service
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pipx install "poetry>=2.0,<3"
+      - run: poetry install --no-interaction
+      - run: poetry run pytest -q
+      - name: Release gate (E2A ProjectReleaseGate; the tests ran in the step above)
+        run: poetry run python -m genai_assistant_service.release.gate --skip-tests --report release-gate-report.json --config '{"fleet_replica_count": 1, "faithfulness_threshold": 0.9}'
