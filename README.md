@@ -71,3 +71,9 @@ which keep their HTTP contracts and guarantees (idempotent adjustments, tenant c
 | [`deploy/gcp`](deploy/gcp) | `landscape.vars` (the values every repository shares) and `binding.vars` (the assistant's): placeholders until the account exists |
 
 Free-tier limits are enforced by the configuration: Always Free regions only, `simulated` or `gemini_api` models only, never a public service. CI plans both stacks against a mock provider.
+
+## The landscape scenario
+
+[`landscape/scenario.py`](landscape/scenario.py) is the acceptance test of the whole landscape (hub design note GCP-01, Section 7): an order goes through order-to-cash and settlement; settlement's event reaches audit-ai through Pub/Sub, and a large settlement is flagged; a bank statement with a short payment reaches reconciliation, which raises an exception; the assistant explains it with citations to what it read, proposes a write-off, and waits; the investigator cannot approve it, a second person can; one adjustment is in the ledger, which stays balanced; the same request, the same approval and a redelivered event are replayed with no second posting and no second finding; an injection is refused and another tenant reads nothing.
+
+The [`landscape-gcp`](.github/workflows/landscape-gcp.yml) workflow runs it: `target: local` starts the five services from the `main` branch of their repositories in their Google Cloud configuration (state in the Firestore emulator, events through the Pub/Sub emulator, the ledger in PostgreSQL, the assistant behind Cloud Run-style identity); `target: cloud` runs the same steps against the deployed services after the cutover.

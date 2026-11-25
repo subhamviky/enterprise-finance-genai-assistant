@@ -150,6 +150,23 @@ resource "google_service_account_iam_member" "github_deploys" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_owner}/${each.value}"
 }
 
+# ------------------------------------------------------------------ the two people of the scenario
+# The cloud scenario needs two identities (four eyes): service accounts stand in for the investigator and
+# the approver. The deployer mints their ID tokens by impersonation; the services grant them roles
+# (identity_subject_roles) and the assistant's invoker list names them.
+resource "google_service_account" "scenario" {
+  for_each     = toset(["investigator", "approver"])
+  account_id   = "scenario-${each.value}"
+  display_name = "Scenario ${each.value} (stands in for a person)"
+}
+
+resource "google_service_account_iam_member" "deployer_mints_tokens" {
+  for_each           = google_service_account.scenario
+  service_account_id = each.value.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 # ------------------------------------------------------------------ a budget alert
 resource "google_billing_budget" "alert" {
   count           = var.billing_account == "" ? 0 : 1
@@ -197,6 +214,11 @@ output "workload_identity_provider" {
 
 output "deployer_service_account" {
   value = google_service_account.deployer.email
+}
+
+output "scenario_service_accounts" {
+  description = "The two people of the cloud scenario: repository variables SCENARIO_INVESTIGATOR_SA and SCENARIO_APPROVER_SA."
+  value       = { for k, v in google_service_account.scenario : k => v.email }
 }
 
 output "gemini_api_key_secret" {

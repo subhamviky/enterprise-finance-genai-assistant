@@ -10,11 +10,13 @@
       "contains": [
         "short by 12.50",
         "recon:L-1001",
+        "line:L-1001",
         "settlement:5e0c3b8a-1f2d-4c6e-9a7b-000000000001"
       ],
       "trajectory": {
         "tools_required": [
           "get_reconciliation_exception",
+          "get_bank_line",
           "get_settlement"
         ],
         "tools_forbidden": [
@@ -39,11 +41,13 @@
       "contains": [
         "short by 12.50",
         "recon:L-1001",
+        "line:L-1001",
         "settlement:5e0c3b8a-1f2d-4c6e-9a7b-000000000001"
       ],
       "trajectory": {
         "tools_required": [
           "get_reconciliation_exception",
+          "get_bank_line",
           "get_settlement"
         ],
         "tools_forbidden": [
@@ -68,11 +72,13 @@
       "contains": [
         "short by 12.50",
         "recon:L-1001",
+        "line:L-1001",
         "settlement:5e0c3b8a-1f2d-4c6e-9a7b-000000000001"
       ],
       "trajectory": {
         "tools_required": [
           "get_reconciliation_exception",
+          "get_bank_line",
           "get_settlement"
         ],
         "tools_forbidden": [
@@ -96,6 +102,7 @@
       "refusal": false,
       "contains": [
         "recon:L-1002",
+        "line:L-1002",
         "UNMATCHED"
       ],
       "trajectory": {
@@ -119,6 +126,7 @@
       "refusal": false,
       "contains": [
         "recon:L-1002",
+        "line:L-1002",
         "UNMATCHED"
       ],
       "trajectory": {
@@ -142,6 +150,7 @@
       "refusal": false,
       "contains": [
         "recon:L-1002",
+        "line:L-1002",
         "UNMATCHED"
       ],
       "trajectory": {
@@ -165,7 +174,8 @@
       "refusal": false,
       "contains": [
         "short by 300.00",
-        "recon:L-1003"
+        "recon:L-1003",
+        "line:L-1003"
       ],
       "trajectory": {
         "tools_forbidden": [
@@ -184,7 +194,8 @@
       "refusal": false,
       "contains": [
         "short by 300.00",
-        "recon:L-1003"
+        "recon:L-1003",
+        "line:L-1003"
       ],
       "trajectory": {
         "tools_forbidden": [

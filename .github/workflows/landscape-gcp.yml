@@ -1,0 +1,244 @@
+name: landscape-gcp
+
+# The whole landscape in its Google Cloud configuration (hub design note GCP-01, Sections 5 and 7).
+#
+# target "local" (the default): the five services on one runner, each from the main branch of its own
+# repository, in the configuration they have on Cloud Run: state in Firestore (emulator), settlement
+# events through Pub/Sub (emulator) pushed to audit-ai, the ledger in PostgreSQL (a container), the
+# assistant behind Cloud Run-style identity (an unsigned Google ID token carrying the caller's email, as
+# Cloud Run hands it to the container). Then landscape/scenario.py: an order, its event, an audit flag,
+# a short bank payment, the assistant's cited explanation, a proposal, a second person's approval, one
+# posting to a balanced ledger, replays, an injection, another tenant.
+#
+# target "cloud": the same scenario against the deployed services (after the cutover runbook). It signs
+# in to Google Cloud through Workload Identity Federation (no key) and mints each caller's ID token.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "local (emulators on this runner) or cloud (the deployed services)"
+        type: choice
+        options: [local, cloud]
+        default: local
+      settlement_ref:
+        description: "financial-settlement-platform branch or tag"
+        default: "main"
+      reconciliation_ref:
+        description: "payment-reconciliation-engine branch or tag"
+        default: "main"
+      o2c_ref:
+        description: "order-to-cash-agentic-ai branch or tag"
+        default: "main"
+  pull_request:
+    paths: ["landscape/scenario.py", ".github/workflows/landscape-gcp.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  local:
+    if: inputs.target != 'cloud'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOOGLE_CLOUD_PROJECT: demo-landscape
+      FIRESTORE_EMULATOR_HOST: localhost:8085
+      PUBSUB_EMULATOR_HOST: localhost:8681
+      LEDGER_PASSWORD: ledger-ci-throwaway       # a container that exists for this run only
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: assistant
+      - uses: actions/checkout@v6
+        with:
+          repository: subhamviky/financial-settlement-platform
+          ref: ${{ inputs.settlement_ref || 'main' }}
+          path: settlement
+      - uses: actions/checkout@v6
+        with:
+          repository: subhamviky/payment-reconciliation-engine
+          ref: ${{ inputs.reconciliation_ref || 'main' }}
+          path: reconciliation
+      - uses: actions/checkout@v6
+        with:
+          repository: subhamviky/order-to-cash-agentic-ai
+          ref: ${{ inputs.o2c_ref || 'main' }}
+          path: o2c
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pipx install "poetry>=2.0,<3"
+
+      - name: Start PostgreSQL, the Firestore emulator and the Pub/Sub emulator (on the host network, so Pub/Sub can push to localhost)
+        run: |
+          docker run -d --name ledger --network host -e POSTGRES_USER=settlement -e POSTGRES_PASSWORD="$LEDGER_PASSWORD" \
+            -e POSTGRES_DB=settlement postgres:16-alpine
+          docker run -d --name firestore --network host gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators \
+            gcloud emulators firestore start --host-port=localhost:8085
+          docker run -d --name pubsub --network host gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators \
+            gcloud beta emulators pubsub start --host-port=localhost:8681 --project="$GOOGLE_CLOUD_PROJECT"
+          for _ in $(seq 60); do docker exec ledger pg_isready -U settlement >/dev/null 2>&1 && break; sleep 2; done
+          docker exec ledger pg_isready -U settlement
+          for c in firestore:"Dev App Server is now running" pubsub:"Server started"; do
+            ready=""
+            for _ in $(seq 90); do docker logs "${c%%:*}" 2>&1 | grep -q "${c#*:}" && ready=yes && break; sleep 2; done
+            [ -n "$ready" ] || { docker logs "${c%%:*}" 2>&1 | tail -5; echo "::error::the ${c%%:*} emulator did not start"; exit 1; }
+          done
+
+      - name: Install the assistant, create the Pub/Sub topic and the push subscription
+        working-directory: assistant/genai-assistant-service
+        run: |
+          poetry install --no-interaction
+          poetry run python - <<'PY'
+          import os
+          from google.cloud import pubsub_v1
+          project = os.environ["GOOGLE_CLOUD_PROJECT"]
+          publisher, subscriber = pubsub_v1.PublisherClient(), pubsub_v1.SubscriberClient()
+          topic = publisher.topic_path(project, "settlement-events")
+          dead = publisher.topic_path(project, "audit-settlement-events-dlq")
+          for t in (topic, dead):
+              publisher.create_topic(name=t)
+          subscriber.create_subscription(request={
+              "name": subscriber.subscription_path(project, "audit-settlement-events"), "topic": topic,
+              "push_config": {"push_endpoint": "http://localhost:8003/pubsub/settlement-events"},
+              "ack_deadline_seconds": 30})
+          subscriber.create_subscription(request={
+              "name": subscriber.subscription_path(project, "audit-settlement-events-dlq"), "topic": dead})
+          print("topic settlement-events, push subscription audit-settlement-events, dead letters")
+          PY
+
+      - name: Start settlement-service on :8080 (PostgreSQL, Pub/Sub; SPRING_PROFILES_ACTIVE=prod,gcp)
+        working-directory: settlement/settlement-service
+        env:
+          SPRING_PROFILES_ACTIVE: prod,gcp
+          DB_URL: jdbc:postgresql://localhost:5432/settlement
+          DB_USER: settlement
+          DB_PASSWORD: ${{ env.LEDGER_PASSWORD }}
+          SETTLEMENT_EVENTS_PUBSUB_TOPIC: settlement-events
+        run: |
+          E2A="v$(sed -n 's:.*<e2a.version>\(.*\)</e2a.version>.*:\1:p' pom.xml)"
+          git clone -q --depth 1 --branch "$E2A" https://github.com/subhamviky/e2a-framework.git "$RUNNER_TEMP/e2a"
+          mvn -B -q -f "$RUNNER_TEMP/e2a/java/pom.xml" install -DskipTests
+          mvn -B -q package -DskipTests
+          nohup java -jar "$(ls target/*.jar | head -1)" > "$RUNNER_TEMP/settlement.log" 2>&1 &
+
+      - name: Start reconciliation-service on :8001 (Firestore)
+        working-directory: reconciliation/reconciliation-service
+        env:
+          RECON_STATE_BACKEND: firestore
+          RECON_FIRESTORE_PREFIX: recon
+          SETTLEMENT_API_URL: http://localhost:8080
+          RECON_TENANT: acme
+        run: |
+          poetry install --no-interaction
+          nohup poetry run uvicorn reconciliation_service.main:app --port 8001 > "$RUNNER_TEMP/reconciliation.log" 2>&1 &
+
+      - name: Start audit-ai-service on :8003 (Firestore; settlement events pushed by Pub/Sub)
+        working-directory: settlement/audit-ai-service
+        env:
+          AUDIT_STATE_BACKEND: firestore
+          AUDIT_FIRESTORE_COLLECTION: audit
+          AUDIT_PUBSUB_SUBSCRIPTION: audit-settlement-events
+          AUDIT_EVENT_DELIVERY: push
+          SETTLEMENT_API_URL: http://localhost:8080
+          AUDIT_TENANT: acme
+        run: |
+          poetry install --no-interaction
+          nohup poetry run uvicorn audit_ai_service.main:app --port 8003 > "$RUNNER_TEMP/audit.log" 2>&1 &
+
+      - name: Start o2c-agent-service on :8002 (Firestore)
+        working-directory: o2c/o2c-agent-service
+        env:
+          O2C_STATE_BACKEND: firestore
+          O2C_FIRESTORE_COLLECTION: o2c
+          SETTLEMENT_API_URL: http://localhost:8080
+          RECONCILIATION_API_URL: http://localhost:8001
+        run: |
+          poetry install --no-interaction
+          nohup poetry run uvicorn o2c_agent_service.main:app --port 8002 > "$RUNNER_TEMP/o2c.log" 2>&1 &
+
+      - name: Start genai-assistant-service on :8004 (Firestore; Cloud Run-style identity)
+        working-directory: assistant/genai-assistant-service
+        env:
+          GENAI_STATE_BACKEND: firestore
+          GENAI_FIRESTORE_COLLECTION: genai
+          RECONCILIATION_API_URL: http://localhost:8001
+          SETTLEMENT_API_URL: http://localhost:8080
+          O2C_API_URL: http://localhost:8002
+          AUDIT_API_URL: http://localhost:8003
+          E2A_IDENTITY_SOURCE: gcp_cloud_run
+          E2A_IDENTITY_TRUSTED_ISSUERS: '["https://accounts.google.com"]'
+          E2A_IDENTITY_SUBJECT_ROLES: '{"ana.investigator@acme.example":["tenant:acme","investigator"],"bo.approver@acme.example":["tenant:acme","finance-approver"]}'
+        run: nohup poetry run uvicorn genai_assistant_service.main:app --port 8004 > "$RUNNER_TEMP/genai.log" 2>&1 &
+
+      - name: Wait until all five answer
+        run: |
+          for url in http://localhost:8080/actuator/health http://localhost:8001/health http://localhost:8002/health \
+                     http://localhost:8003/health http://localhost:8004/health; do
+            for _ in $(seq 120); do curl -fs "$url" >/dev/null && break; sleep 2; done
+            curl -fs "$url" >/dev/null && echo "up: $url" || { echo "::error::$url did not come up"; exit 1; }
+          done
+
+      - name: The end-to-end scenario
+        working-directory: assistant/genai-assistant-service
+        env:
+          AUDIT_DELIVERY: push
+          GENAI_IDENTITY: token
+        run: poetry run python ../landscape/scenario.py
+
+      - name: Service logs
+        if: always()
+        run: |
+          for f in settlement reconciliation audit o2c genai; do echo "::group::$f"; tail -n 80 "$RUNNER_TEMP/$f.log" || true; echo "::endgroup::"; done
+          for c in pubsub firestore; do echo "::group::$c emulator"; docker logs "$c" 2>&1 | tail -n 30 || true; echo "::endgroup::"; done
+
+  cloud:
+    if: inputs.target == 'cloud'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    # Repository variables (Settings, Secrets and variables, Actions): GCP_WORKLOAD_IDENTITY_PROVIDER and
+    # GCP_DEPLOYER_SA (landscape/foundation's outputs), the five *_URL (landscape.vars), and
+    # SCENARIO_INVESTIGATOR_SA / SCENARIO_APPROVER_SA: two service accounts standing in for the two people
+    # (landscape/foundation creates them; the services grant them roles in identity_subject_roles).
+    env:
+      SETTLEMENT_URL: ${{ vars.SETTLEMENT_API_URL }}
+      RECON_URL: ${{ vars.RECONCILIATION_API_URL }}
+      O2C_URL: ${{ vars.O2C_API_URL }}
+      AUDIT_URL: ${{ vars.AUDIT_API_URL }}
+      GENAI_URL: ${{ vars.GENAI_API_URL }}
+      AUDIT_DELIVERY: push
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pipx install "poetry>=2.0,<3"
+      - name: Install the scenario's dependencies
+        working-directory: genai-assistant-service
+        run: poetry install --no-interaction
+      - name: The end-to-end scenario against the deployed services
+        working-directory: genai-assistant-service
+        run: |
+          # each call's ID token carries the audience Cloud Run IAM checks: the target service's URL
+          token() { gcloud auth print-identity-token --audiences="$1" "${@:2}"; }
+          export TOKEN_SETTLEMENT="$(token "$SETTLEMENT_URL")" TOKEN_RECON="$(token "$RECON_URL")" \
+                 TOKEN_O2C="$(token "$O2C_URL")" TOKEN_AUDIT="$(token "$AUDIT_URL")"
+          export TOKEN_INVESTIGATOR="$(token "$GENAI_URL" --impersonate-service-account="${{ vars.SCENARIO_INVESTIGATOR_SA }}" --include-email)"
+          export TOKEN_APPROVER="$(token "$GENAI_URL" --impersonate-service-account="${{ vars.SCENARIO_APPROVER_SA }}" --include-email)"
+          poetry run python ../landscape/scenario.py

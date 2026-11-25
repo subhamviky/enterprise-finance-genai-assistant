@@ -43,7 +43,8 @@ class InvestigatorAgent(BaseAgent):
             state['grounding_failure'] = 'not valid JSON for the answer schema'
             return 0.0
         known = set(ids(state.get('evidence') or []))
-        evidence_text = json.dumps([e['data'] for e in state.get('evidence') or []]) + ' '.join(known)
+        evidence_text = (json.dumps([e['data'] for e in state.get('evidence') or []]) + ' '.join(known) + ' ' +
+                         ' '.join(e['summary'] for e in state.get('evidence') or []))
         unknown = [c for c in answer['citations'] if c not in known]
         unsupported = [t for t in CHECKED.findall(' '.join([answer['answer'], *answer['verified']]))
                        if t not in evidence_text]
