@@ -180,7 +180,9 @@ The assistant sits in front of four services that already existed: reconciliatio
 | Images | one Artifact Registry repository for the landscape, a cleanup policy keeping it within the free 0.5 GB |
 | Model | Gemini Developer API (free key in Secret Manager) or the simulated model |
 | Deployment | GitHub Actions through Workload Identity Federation, limited to the owner's four repositories; no JSON key exists |
-| Cost control | a budget alert at the first cent; Terraform refuses non-free regions and models |
+| Cost control | a budget alert at the first cent (₹1 in the trial's billing currency); Terraform refuses non-free regions and models |
+
+*Deployed (status: verified, 25 November 2026).* Project in `us-central1`; the assistant is the Cloud Run service `genai-assistant-service` (service account `genai-app`), callable by the two people and the two scenario accounts only. The four systems run beside it in the same project: settlement (Cloud Run, with its PostgreSQL ledger on an e2-micro Container-Optimized OS VM with no external address), reconciliation and audit-ai (Cloud Run, Pub/Sub push with a dead-letter topic), O2C (Cloud Run). Every service scales to zero and uses CPU only during requests; the model calls are bounded (12 seconds, one retry). The billing report for 1 to 25 November shows ₹0.00 against ₹28,569.00 of trial credit.
 
 ### 5.5 Integration and contracts
 
@@ -198,7 +200,7 @@ Every call carries `X-Tenant-Id` and, when configured, the service's own Google 
 | Layer | Mechanism |
 |---|---|
 | Who may reach the service | Cloud Run IAM: `roles/run.invoker` for the listed people only; Terraform refuses `allUsers` and `allAuthenticatedUsers` |
-| Who the caller is | the verified Google ID token's email (E2A `gcp_cloud_run`); the deployment grants each caller its tenants (`tenant:<id>`) and roles (`identity_subject_roles`); the caller names its tenant in `X-Tenant-Id` and may choose its acting role in `X-User-Role` among the roles it holds |
+| Who the caller is | the verified Google ID token's email (E2A `gcp_cloud_run`; both issuer spellings are trusted, `accounts.google.com` for a person's token and `https://accounts.google.com` for a service account's; a token without an email is not matched to any grant); the deployment grants each caller its tenants (`tenant:<id>`) and roles (`identity_subject_roles`); the caller names its tenant in `X-Tenant-Id` and may choose its acting role in `X-User-Role` among the roles it holds |
 | What an agent may call | the tool allow-list of each agent (`policies/governance.yaml`), applied by E2A to `io_read` and `io_modify` |
 | What the assistant may do in the systems | the roles granted to its service account in each system, checked there |
 | Secrets | the Gemini key is a Secret Manager reference; nothing secret is in the repository, the Terraform state or the logs |
@@ -206,7 +208,7 @@ Every call carries `X-Tenant-Id` and, when configured, the service's own Google 
 
 ### 5.7 Model access
 
-The model is reached only through `config['llm_service']`, bound from `E2A_PROVIDER_PROFILE`. The `simulated` profile (the default) answers with the rules in `services/simulated.py`, so CI and local runs need no account. The `gemini_api` profile adds the Gemini client (`poetry install --extras gemini`, or the image built with `POETRY_EXTRAS=gemini`) and E2A's per-minute and per-day limits. The agents' checks are the same for both: a model answer is accepted only if it passes them.
+The model is reached only through `config['llm_service']`, bound from `E2A_PROVIDER_PROFILE`. The `simulated` profile (the default) answers with the rules in `services/simulated.py`, so CI and local runs need no account. The `gemini_api` profile adds the Gemini client (`poetry install --extras gemini`, or the image built with `POETRY_EXTRAS=gemini`) and E2A's per-minute and per-day limits. The agents' checks are the same for both: a model answer is accepted only if it passes them. Live findings shaped three rules: the model's JSON is read from inside a markdown code fence or a sentence, because Gemini wraps it; an unreadable *intent* reply is read with the rules and the investigation continues (a model fallback ends a workflow, which would turn a valid request into "no record was found"); and each model call is bounded (`LLM_SDK_TIMEOUT` 12 seconds, `LLM_SDK_MAX_RETRIES` 1), so a busy free-tier model degrades the answer to the verified facts instead of making the caller wait a minute. The answer lists `records_read`, the records the evidence step read, next to the `citations` the model chose among them.
 
 ## 6. Data Design
 
@@ -311,7 +313,7 @@ The decision on an approval is one compare-and-set; the claim is held across the
 |---|---|
 | Cost | $0 at list price: free regions, one instance scaled to zero, free model tier; a budget alert at the first cent |
 | Rate limits | at most three model calls per request; the gemini_api profile limits requests per minute and per day in-process; in-flight requests limited to 8 |
-| Latency | no model on the evidence step; the simulated model is instant; live latency is not yet measured (Section 14) |
+| Latency | no model on the evidence step (the four reads took about one second in total); the model steps dominate: in the first cloud run an investigation took 79 seconds and a proposal 24 on the free-tier model, and a step with no model call about one second; one run, so no percentiles (Section 14) |
 | Observability | E2A's structured logs (metadata, not prompts) and the evaluation records; correlation ids per request |
 | Availability | a model outage degrades answers and removes proposals; it never blocks reading or stops a decided approval |
 | Data | synthetic; Firestore PITR and delete protection are off on the shared free database, which `terraform destroy` removes before the trial ends |
@@ -331,7 +333,7 @@ The decision on an approval is one compare-and-set; the claim is held across the
 
 ### 13.1 Tests
 
-66 tests in 9 modules: the journeys; the failure matrix (13); safety (8: injection, limits, invented identifiers, entitlements, redaction); the HTTP API with Cloud Run identity (4); the converter of the placeholder files (6); and the generated contract, conformance and workflow tests.
+71 tests in 9 modules: the journeys; the failure matrix (17: with the fenced and unreadable model replies and the wording-independent claim); safety (8: injection, limits, invented identifiers, entitlements, redaction); the HTTP API with Cloud Run identity (4); the converter of the placeholder files (6); and the generated contract, conformance and workflow tests.
 
 ### 13.2 Evaluation sets
 
@@ -343,7 +345,7 @@ Tests; a second run with the state in the Firestore emulator; strict E2A conform
 
 ### 13.4 The landscape scenario
 
-`landscape/scenario.py` runs the plan's scenario against the five services in their Google Cloud configuration: an order, its event through Pub/Sub, an audit flag, a short payment, the assistant's cited explanation, a proposal, a second person's approval, one posting to a balanced ledger, replays, an injection and another tenant. It passes on the emulators in CI (Firestore, Pub/Sub, PostgreSQL), with the assistant behind Cloud Run-style identity.
+`landscape/scenario.py` runs the plan's scenario against the five services in their Google Cloud configuration: an order, its event through Pub/Sub, an audit flag, a short payment, the assistant's cited explanation, a proposal, a second person's approval, one posting to a balanced ledger, replays, an injection and another tenant. It passes on the emulators in CI (Firestore, Pub/Sub, PostgreSQL), with the assistant behind Cloud Run-style identity, and it **passes against the deployed services** (target `cloud` of `landscape-gcp`, 25 November 2026, about 125 seconds): GitHub Actions authenticates through Workload Identity Federation, every call carries a Google ID token, and the two people are two stand-in service accounts. Step 7a (the requester approving their own proposal) runs only locally, where one identity can claim both roles. Each run uses its own orders, bank lines and amounts, so it can be repeated. Evidence and findings: `docs/EVALUATION_REPORT.md`.
 
 ## 14. Gaps and Deviations
 
@@ -351,8 +353,10 @@ Tests; a second run with the state in the Firestore emulator; strict E2A conform
 |---|---|---|---|
 | G-1 | The execution step posts to settlement-service's adjustment API directly, as reconciliation does, not through reconciliation | the exception stays open in reconciliation until its own accept | a service route to accept an exception |
 | G-2 | One trace across the services is not implemented | correlation ids are per request, not carried on the tools' calls | carry the correlation id and add tracing |
-| G-3 | The evaluation evidence is wiring evidence (the simulated model); live Gemini evidence is not collected | the answers' quality with a real model is not yet measured | run the gate with `gemini_api` after the cutover |
-| G-4 | Latency and cold start are not measured in the cloud | p50 and p95 are unknown | measure after the cutover |
-| G-5 | Cloud-side identity is verified by Cloud Run IAM in the cloud; the emulator run reads unsigned tokens | the local run exercises the grants, not IAM's signature check | the cloud target of the scenario |
-| G-6 | The cloud target of `landscape-gcp` has not run | it needs the account | the cutover runbook |
+| G-3 | The 62-case evaluation sets are wiring evidence (the simulated model); the live model is evidenced by the cloud scenario only (one investigation and one proposal), not by the sets | answer quality over the sets with a real model is not measured | run the gate with `gemini_api` and `E2A_SWAP_LIVE=true` (about 190 calls, 15 minutes at the free rate) |
+| G-4 | Latency is measured for one cloud run, not as percentiles | p50 and p95 are unknown; cold start is inside the one run | repeat the scenario and read the request log |
+| G-5 | *Closed.* Cloud-side identity is verified by Cloud Run IAM in the cloud | the cloud scenario exercises IAM's signature check, the issuer rule and the grants | none |
+| G-6 | *Closed.* The cloud target of `landscape-gcp` ran and passed (25 November 2026) | | none |
 | G-7 | Approvals are listed from an index of the newest 500 per tenant | older approvals stay readable by id but not listed | pagination if needed |
+| G-8 | The free-tier model is sometimes busy (503) and slow | an investigation took 79 seconds in the one cloud run; answers degrade to the verified facts when a call fails | a paid or less loaded model is a change of `LLM_MODEL_ID`, not of code; the trial is not upgraded |
+| G-9 | With real identities the self-approval case (step 7a) cannot be run by one stand-in account | covered locally and by tests (`DECIDER_REFUSED`); the cloud run covers an investigator's refusal and a second person's approval | a third stand-in account holding both roles |
