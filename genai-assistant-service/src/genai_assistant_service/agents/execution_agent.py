@@ -32,7 +32,7 @@ class ExecutionAgent(BaseAgent):
         result = io_modify.call('post_adjustment', {
             'settlement_id': proposal['settlement_id'],
             'json': {'type': proposal['action'], 'amount': proposal['amount'],
-                     'reason': proposal['reason'][:500], 'reference': f'genai-{ctx.idempotency_key}'[:100]}},
+                     'reason': proposal['reason'][:500], 'reference': self._reference(state, ctx)}},
             idempotency_key=ctx.idempotency_key)
         body = result.get('body') or {}
         outcome = result.get('outcome')
@@ -40,7 +40,29 @@ class ExecutionAgent(BaseAgent):
                             'adjustment_id': body.get('adjustmentId'), 'read_back': result.get('read_back'),
                             'approved_by': state.get('approved_by'), 'idempotency_key': ctx.idempotency_key,
                             'detail': body.get('error') or body.get('reason')}
+        self._close_exception(state, ctx, io_modify, body)
         return [outcome]
+
+    @staticmethod
+    def _reference(state, ctx):
+        """The ledger reference names the bank line, so reconciliation can tie the adjustment to its exception."""
+        line = state.get('line_id')
+        return (f'genai:{line}:{ctx.idempotency_key}' if line else f'genai-{ctx.idempotency_key}')[:100]
+
+    def _close_exception(self, state, ctx, io_modify, body):
+        """After the ledger shows the adjustment, ask reconciliation to close the exception. Reconciliation
+        reads the ledger itself and decides; a refusal or an outage leaves the exception open and is
+        reported in the receipt (the posting stands, it is never undone here)."""
+        receipt, line = state['receipt'], state.get('line_id')
+        if not line or receipt['outcome'] != 'COMMITTED' or not receipt.get('read_back'):
+            return
+        closed = io_modify.call('resolve_exception', {
+            'line_id': line, 'json': {'settlement_id': state['proposal']['settlement_id'],
+                                      'adjustment_id': body.get('adjustmentId')}},
+            idempotency_key=ctx.idempotency_key)
+        resolved = closed.get('body') or {}
+        receipt['exception'] = {'line_id': line, 'closed': bool(closed.get('physical_success')),
+                                'status': resolved.get('status'), 'detail': resolved.get('detail') or resolved.get('error')}
 
     def _handle_error(self, error, state, ctx):
         logging.error(f'[ExecutionAgent] {error}')

@@ -253,3 +253,27 @@ def test_the_rules_arbitrate_when_the_model_calls_a_request_that_names_a_record_
     assert answer["status"] == "COMPLETED" and f"order:{ORDER}" in answer["records_read"], answer
     nothing = ask(make_assistant(llm=llm), "What is the weather today?")
     assert nothing["status"] == "COMPLETED" and "I investigate" in nothing["answer"], nothing    # still unsupported
+
+
+def _exception(landscape, line="L-1001"):
+    return next(c for c in landscape.data["exceptions"] if c["line_id"] == line)
+
+
+def test_an_approved_write_off_closes_the_reconciliation_exception(assistant, landscape):
+    approval = proposed(assistant)
+    done = assistant.approve(approval, "acme", *APPROVER)
+    posted = landscape.posted()
+    assert len(posted) == 1 and "L-1001" in posted[0]["reference"]          # the ledger row names the line
+    assert _exception(landscape)["status"] == "RESOLVED"
+    assert done["receipt"]["exception"]["closed"] is True
+    assert "L-1001 is RESOLVED" in done["answer"]
+
+
+def test_a_reconciliation_outage_leaves_the_exception_open_but_keeps_the_posting(assistant, landscape):
+    approval = proposed(assistant)
+    landscape.faults["recon:/service/v1/exceptions/L-1001/resolve"] = 503
+    done = assistant.approve(approval, "acme", *APPROVER)
+    assert len(landscape.posted()) == 1 and done["status"] == "COMPLETED"    # the posting stands
+    assert _exception(landscape)["status"] == "OPEN"
+    assert done["receipt"]["exception"]["closed"] is False
+    assert "stays open" in done["answer"]

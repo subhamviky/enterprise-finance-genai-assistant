@@ -103,6 +103,14 @@ class AssistantService:
         return {"status": status, "intent": state.get("intent"), "answer": redacted,
                 "correlation_id": state.get("correlation_id"), **fields}
 
+    @staticmethod
+    def _closure(receipt) -> str:
+        e = receipt.get("exception")
+        if not e:
+            return ""
+        return (f" Exception {e['line_id']} is {e.get('status') or 'closed'}." if e["closed"] else
+                f" Exception {e['line_id']} was not closed ({e.get('detail') or 'reconciliation did not confirm'}); it stays open.")
+
     def _outcome(self, state) -> Dict[str, Any]:
         refusal = state.get("refusal")
         if refusal:                                       # a typed governance refusal
@@ -132,7 +140,7 @@ class AssistantService:
         if state.get("receipt"):
             r = state["receipt"]
             text = (f"Adjustment {r.get('adjustment_id')} posted to the ledger (read back: {r.get('read_back')})."
-                    if r["outcome"] == "COMMITTED" else
+                    + self._closure(r) if r["outcome"] == "COMMITTED" else
                     f"The adjustment was not posted ({r.get('detail') or r['outcome']}).")
             return self._answer(state, "REPLAYED" if state.get("replayed") else
                                 ("COMPLETED" if r["outcome"] == "COMMITTED" else "FAILED"), text, receipt=r)

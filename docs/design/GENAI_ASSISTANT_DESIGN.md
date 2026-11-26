@@ -189,6 +189,7 @@ The assistant sits in front of four services that already existed: reconciliatio
 | System | Endpoint | Tool | Role the assistant needs |
 |---|---|---|---|
 | reconciliation-service | `GET /service/v1/exceptions`, `GET /service/v1/lines/{id}` | `get_reconciliation_exception`, `get_bank_line` | `reconciliation.read` |
+| reconciliation-service | `POST /service/v1/exceptions/{id}/resolve` | `resolve_exception` | `reconciliation.resolve` |
 | settlement-service | `GET /api/v1/settlements/{id}`, `GET /api/v1/events`, `POST` and `GET /api/v1/settlements/{id}/adjustments` | `get_settlement`, `get_settlement_events`, `post_adjustment` | `settlement.read`, `settlement.adjust` |
 | o2c-agent-service | `GET /api/v1/orders/{id}` | `get_order` | read |
 | audit-ai-service | `GET /audits/{settlement_id}` | `get_audit_findings` | read |
@@ -351,7 +352,7 @@ Tests; a second run with the state in the Firestore emulator; strict E2A conform
 
 | # | Gap or deviation | Effect | Follow-up |
 |---|---|---|---|
-| G-1 | The execution step posts to settlement-service's adjustment API directly, as reconciliation does, not through reconciliation | the exception stays open in reconciliation until its own accept | a service route to accept an exception |
+| G-1 (closed, GCP-02 A.1) | The execution step posts to settlement-service's adjustment API directly, as reconciliation does, not through reconciliation | was: the exception stayed open. Now: after the ledger read-back, `resolve_exception` asks reconciliation to close it; reconciliation reads the ledger itself and closes only if an adjustment with that id exists whose reference names the bank line. If reconciliation is down or refuses, the posting stands, the exception stays open and the receipt says so | `POST /service/v1/exceptions/{line_id}/resolve` (role `reconciliation.resolve`) |
 | G-2 | One trace across the services is not implemented | correlation ids are per request, not carried on the tools' calls | carry the correlation id and add tracing |
 | G-3 | The 62-case sets were written for the simulated model; run against `gemini-3.5-flash-lite` they score 0.943 (50 of 53 golden cases perfect, 9 of 9 red-team cases pass), the score before two fixes was 0.855 | three golden cases were below 1.0 in the second run: two expect the policy's limit, which the live model never reaches because it declines first (they stay below 1.0); the third posts after approval and met HTTP 429, and passed when run alone after the quota reset | keep the sets as wiring evidence; a live-specific variant of the two limit cases (`docs/EVALUATION_REPORT.md`) |
 | G-4 | Latency is measured for one cloud run, not as percentiles | p50 and p95 are unknown; cold start is inside the one run | repeat the scenario and read the request log |

@@ -15,7 +15,7 @@ tools:
   EvidenceAgent: [get_reconciliation_exception, get_bank_line, get_settlement, get_settlement_events, get_order, get_audit_findings]
   InvestigatorAgent: []
   ProposalAgent: []
-  ExecutionAgent: [get_settlement, post_adjustment]
+  ExecutionAgent: [get_settlement, post_adjustment, resolve_exception]
 
 # what a proposal may be: the policy and risk check after the model drafts it
 adjustments:
