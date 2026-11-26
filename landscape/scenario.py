@@ -157,8 +157,16 @@ def main() -> None:
     found = eventually(lambda: findings(s_sid), "audit-ai's finding for the scanners' settlement")
     step("2 settlement's event reaches audit-ai", found[0]["settlement_id"] == s_sid,
          f"{found[0]['event_type']}: {found[0]['verdict']}, risk {found[0]['risk_band']} ({DELIVERY})")
-    big = call("POST", f"{SETTLEMENT}/api/v1/settlements", headers={**system("SETTLEMENT"), "Idempotency-Key": f"scenario-big-{RUN}"},
-               json={"payerAccount": "ACC-1000", "payeeAccount": "ACC-2000", "amount": 150000.00, "currency": "EUR"}).json()
+    # the large payment goes from whichever of the two accounts holds more, so repeated runs move money back
+    # and forth instead of draining ACC-1000 (seeded with 1,000,000 EUR; each run used to take 150,000)
+    funds = balances()
+    payer, payee = ("ACC-1000", "ACC-2000") if funds["ACC-1000"] >= funds["ACC-2000"] else ("ACC-2000", "ACC-1000")
+    response = call("POST", f"{SETTLEMENT}/api/v1/settlements", headers={**system("SETTLEMENT"), "Idempotency-Key": f"scenario-big-{RUN}"},
+                    json={"payerAccount": payer, "payeeAccount": payee, "amount": 150000.00, "currency": "EUR"})
+    big = response.json()
+    if "settlementId" not in big or response.status_code != 201:
+        step("2b The large settlement is accepted by settlement-service", False,
+             f"HTTP {response.status_code} from {payer} -> {payee}: {response.text[:300]}")
     flagged = eventually(lambda: [f for f in findings(big["settlementId"]) if f["verdict"] == "FLAGGED"],
                          "audit-ai to flag the 150,000 EUR settlement")
     step("3 audit-ai flags the large settlement", flagged[0]["rule_hits"][0]["rule"] == "large-amount",
