@@ -33,6 +33,15 @@ def json_object(text: str) -> dict:
         return json.loads(text[start:end + 1])
 
 
+def clean_id(value, query: str):
+    """An identifier the model returned, without the punctuation of the sentence around it ("ORD-7Q2K9X4M1B?" is
+    "ORD-7Q2K9X4M1B"), kept only if it is in the request itself (live finding, GCP-01)."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip().strip(".,;:!?()[]{}\"'`")
+    return value if value and value in query else None
+
+
 def rule_intent(text: str) -> dict:
     """The deterministic reading of a request (the fallback, and the simulated model)."""
     low = text.lower()
@@ -70,10 +79,19 @@ class IntentAgent(BaseAgent):
             return 1.0
         query = str(state.get('query', ''))
         for key in ('line_id', 'settlement_id', 'order_id'):          # only what the request says
-            if data.get(key) and data[key] not in query:
-                data[key] = None
+            data[key] = clean_id(data.get(key), query)
         if data['intent'] != 'UNSUPPORTED' and not any(data.get(k) for k in ('line_id', 'settlement_id', 'order_id')):
             data['intent'] = 'UNSUPPORTED'                           # nothing to look at
+        if data['intent'] == 'UNSUPPORTED':
+            # The model found nothing to do. If the request itself names a bank line, settlement or order, the rules
+            # read it deterministically; a small free-tier model sometimes answers UNSUPPORTED to a plain
+            # "Status of order ORD-...?" (live finding, GCP-01). Investigating is read-only; a proposal still waits
+            # for a second person.
+            ruled = rule_intent(query)
+            if ruled['intent'] != 'UNSUPPORTED':
+                data = {**data, **{k: ruled.get(k) for k in ('line_id', 'settlement_id', 'order_id')},
+                        'intent': ruled['intent']}
+                state['degraded'] = True
         state.update({k: v for k, v in data.items() if v is not None})
         return 1.0
 
