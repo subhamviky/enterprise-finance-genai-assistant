@@ -1,5 +1,7 @@
 # Enterprise Finance GenAI Assistant
 
+![Enterprise Finance GenAI Assistant](docs/assets/finance-genai-banner.png)
+
 A finance investigator over three systems of record: it answers **why a payment is unmatched** or
 **why a settlement is delayed or flagged** from their data, with citations, separating what a record
 states from what is inferred; it **proposes** a write-off or refund within policy; and it **executes**
