@@ -88,6 +88,37 @@ Reading the table: every step that does not call the model finishes in about a s
 
 Cost: the billing report for 1 to 25 November 2026 shows **₹0.00** against ₹28,569.00 of trial credit (none consumed). The budget alert is set at ₹1, so the first charge would send an e-mail.
 
+## Live model over the 62 cases (25 and 26 November 2026)
+
+The release gate with the model live: `E2A_PROVIDER_PROFILE=gemini_api`, `gemini-3.5-flash-lite` on the free tier, the key read from Secret Manager into the one command. The four systems are the in-memory stand-ins; only the model is live. Same 53 golden and 9 red-team cases, run twice.
+
+| | First run | After the fixes below |
+|---|---|---|
+| Gate status, all stages | SUCCESS | SUCCESS |
+| RAG evaluation score (mean over the 53 golden cases; the gate's threshold is 0.85) | **0.855** | **0.943** |
+| Golden cases below 1.0 | 9 | 3 |
+| Red-team failures | 0 of 9 | 0 of 9 |
+| Wall time | about 6.5 minutes | about 13.5 minutes (the model answered more slowly) |
+| Simulated model, for comparison | 1.0 | 1.0 |
+
+What the nine failures of the first run were. A second run of only those cases, printing each answer (`landscape/live_cases.py`), told them apart:
+
+| Cases | Cause | Result |
+|---|---|---|
+| `order-paid-2` | the model classified "Status of order ORD-…?" as unsupported | **fixed**: the rules read a request that names a record when the model finds nothing to do; the model may also return the id with the question mark attached, which is now stripped |
+| `propose-nothing-0`, `-1`, `propose-failed-settlement` | the proposal schema rejected the model's draft: a number for the amount, `null` for the fields of a draft of nothing | **fixed**: the draft is read as it comes; the policy still decides on the exact amount |
+| `approve-self-refused`, `approve-wrong-role`, `unknown-order` | transient: rate-limit fallbacks in the gate run (HTTP 429); the same cases passed when run alone | no change needed |
+| `propose-over-limit-0`, `-1` | the golden case expects the **policy** to refuse a 300 EUR draft ("policy limit"); the live model declines first ("too large to qualify as a small short payment"), so the limit is never reached | open by nature: the outcome is safe (nothing proposed, nothing posted) but this case cannot show the limit with this model; the limit is tested with a scripted 900 EUR draft (`test_failure_matrix.py`) |
+
+Still below 1.0 after the fixes, three cases:
+
+| Case | Score | What is known |
+|---|---|---|
+| `propose-over-limit-0`, `propose-over-limit-1` | 0.00 | as above: the model declines before the policy |
+| `approve-posts-once-0` | 0.00 | expects a second person's approval to post once; `post_adjustment` was not called. The proposal step answered HTTP 429 (quota exhausted) in the gate run, and again when the case was run alone later; the free daily limit (500 requests for the model) may have been spent by the day's earlier runs (the process's own daily budget is per process and does not see other runs). **Open:** rerun the case after the quota resets; the cause is not proven |
+
+Reading the numbers. The deterministic parts held with a real model: the red-team set (injection in the request and in a record, card, IBAN and e-mail), the four-eyes refusals, the tenant separation, and the "nothing is proposed or posted unless valid" behaviour. What a free-tier model costs is availability and wording: the first gate run logged repeated 429 responses at 15 requests a minute although the process limit was 12 (the SDK's own retry also counts at Google and the process limiter does not see it; likely cause, not verified), and the golden set's phrase checks were written for the simulated model, so some correct answers in other words score below 1.0 (`propose-over-limit-*` is the clearest). The score of 0.943 is therefore a lower bound on answer quality, not a measure of it, and the sets were not written for a live model; one trial per case was run, so it carries run-to-run noise (the first run scored 0.855 before the fixes).
+
 ## Findings that changed the code
 
 | Found by | Finding | Change |
@@ -104,12 +135,15 @@ Cost: the billing report for 1 to 25 November 2026 shows **₹0.00** against ₹
 | The first cloud run | each model call waited 60 seconds before giving up when the free-tier model answered 503 | each call is bounded (12 seconds, one retry); the fallback answers with the verified facts |
 | The first cloud run | the deployed O2C service was refused by Firestore when its access was conditioned on the shared database name | the condition applies only to a service's own database (O2C Terraform) |
 | The first cloud run | a repeat run on the same landscape was refused as a duplicate of the first run's bank line, and an older run's open settlement of the same amount could be chosen as the closest item | each run uses its own orders, bank lines and amounts |
+| The live model over the sets | the proposal schema refused a draft with a numeric amount or `null` fields, so every "nothing to propose" case fell back | the draft is read in the schema's types; the policy still decides on the exact amount |
+| The live model over the sets | the model answered UNSUPPORTED to a request that names an order, and returned an id with the sentence's punctuation attached | the rules arbitrate an UNSUPPORTED intent that names a record; model-returned ids lose their punctuation |
 
 ## Open
 
 | Item | Needed to close it |
 |---|---|
-| Live-model evidence over the 62-case sets (answer quality, refusals, rate limits, tokens, cost per request) | run the gate with `E2A_PROVIDER_PROFILE=gemini_api` and `E2A_SWAP_LIVE=true`: about 190 model calls, inside the free daily limit of 500 but about 15 minutes at 15 requests per minute; not yet run |
-| Deployed latency percentiles and cold start | the scenario gives one run (above); p50 and p95 need repeated runs |
-| Several trials per case | needed once the model is not deterministic |
-| Model availability | the free-tier model answered 503 at times; the answers then degrade to the verified facts and say so |
+| `approve-posts-once-0` below 1.0 in the live run | rerun the case after the model's daily quota resets (midnight Pacific time) and record the answer |
+| The golden cases `propose-over-limit-*` cannot show the policy's limit with a live model that declines first | keep as wiring evidence; the limit has its own test; a live-specific variant of the case would drop the policy phrase |
+| Deployed latency percentiles and cold start | the scenario gives one run; p50 and p95 need repeated runs |
+| Several trials per case | the live score has run-to-run noise; run each case several times (`eval_trials`) within the free quota over several days |
+| Model availability | the free-tier model answered 429 and 503 at times; the answers then degrade to the verified facts and say so |
