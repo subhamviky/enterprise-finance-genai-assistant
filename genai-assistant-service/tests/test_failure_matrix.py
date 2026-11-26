@@ -225,10 +225,10 @@ def _reply(by_agent):
 def test_a_draft_with_a_numeric_amount_is_read_and_still_checked_by_the_policy(make_assistant, landscape):
     from genai_assistant_service.standins.landscape import S_SHORT
     llm = _reply({"You are IntentAgent": {"intent": "PROPOSE", "line_id": "L-1001"},
-                  "You are ProposalAgent": {"action": "WRITE_OFF", "settlement_id": S_SHORT, "amount": 2.5,
+                  "You are ProposalAgent": {"action": "WRITE_OFF", "settlement_id": S_SHORT, "amount": 12.5,
                                             "currency": "EUR", "reason": "short payment"}})
     answer = ask(make_assistant(llm=llm), "Propose a write-off for bank line L-1001")
-    assert answer["status"] == "AWAITING_APPROVAL" and answer["proposal"]["amount"] == "2.50", answer
+    assert answer["status"] == "AWAITING_APPROVAL" and answer["proposal"]["amount"] == "12.50", answer
     too_big = _reply({"You are IntentAgent": {"intent": "PROPOSE", "line_id": "L-1001"},
                       "You are ProposalAgent": {"action": "WRITE_OFF", "settlement_id": S_SHORT, "amount": 900,
                                                 "currency": "EUR", "reason": "x"}})
@@ -277,3 +277,19 @@ def test_a_reconciliation_outage_leaves_the_exception_open_but_keeps_the_posting
     assert _exception(landscape)["status"] == "OPEN"
     assert done["receipt"]["exception"]["closed"] is False
     assert "stays open" in done["answer"]
+
+
+def test_a_write_off_on_the_wrong_candidate_or_amount_is_refused(assistant, landscape):
+    """A live model once chose another COMPLETED settlement than the one the bank line is short against."""
+    from genai_assistant_service.services.policy import Policy
+    line = {"line_id": "L-1", "amount": "987.50"}
+    case = {"candidates": [{"settlement_id": "S-A"}, {"settlement_id": "S-B"}]}
+    short = {"amount": "1000.00"}
+    check = Policy.check_against_bank_line
+    ok = {"action": "WRITE_OFF", "settlement_id": "S-A", "amount": "12.50"}
+    assert check(ok, short, line, case) is None
+    assert "not a candidate" in check({**ok, "settlement_id": "S-Z"}, short, line, case)
+    assert "does not match" in check(ok, {"amount": "998.00"}, line, case)       # this settlement is short by 10.50
+    assert "does not match" in check({**ok, "amount": "10.00"}, short, line, case)
+    assert check({**ok, "action": "REFUND"}, short, line, case)                    # a short payment is not refunded
+    assert check(ok, short, None, None) is None                                    # a question about a settlement only
