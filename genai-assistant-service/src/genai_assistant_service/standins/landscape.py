@@ -141,6 +141,8 @@ class Landscape:
         if system == "recon" and path.startswith("/service/v1/lines/"):
             line = d["lines"].get(path.rsplit("/", 1)[-1])
             return httpx.Response(200, json=line) if line else httpx.Response(404, json={"detail": "unknown line"})
+        if system == "recon" and request.method == "POST" and path.endswith("/resolve"):
+            return self._resolve(path.split("/")[-2], request)
         if system == "o2c" and path.startswith("/api/v1/orders/"):
             order = d["orders"].get(path.rsplit("/", 1)[-1])
             return httpx.Response(200, json=order) if order else httpx.Response(404, json={"detail": "unknown order"})
@@ -163,6 +165,19 @@ class Landscape:
                     return self._adjust(sid, request)
         return httpx.Response(404, json={"error": f"no route {request.method} {path}"})
 
+    def _resolve(self, line_id, request):
+        """reconciliation-service: closes an exception only if the ledger shows the adjustment for that line."""
+        body = json.loads(request.content or b"{}")
+        case = next((c for c in self.data["exceptions"] if c["line_id"] == line_id), None)
+        if case is None:
+            return httpx.Response(422, json={"detail": "no exception for that line"})
+        rows = self.data["adjustments"].get(body.get("settlement_id"), [])
+        if not any(str(r["adjustmentId"]) == str(body.get("adjustment_id")) and line_id in (r.get("reference") or "")
+                   for r in rows):
+            return httpx.Response(422, json={"detail": "the ledger shows no such adjustment for this line"})
+        case["status"] = "RESOLVED"
+        return httpx.Response(200, json={"line_id": line_id, "status": "RESOLVED", "adjustment_id": body["adjustment_id"]})
+
     def _adjust(self, sid, request):
         key, body = request.headers.get("Idempotency-Key"), json.loads(request.content or b"{}")
         if not key:
@@ -180,6 +195,7 @@ class Landscape:
         else:
             adjustment = {"adjustmentId": str(uuid.UUID(int=next(self._ids))), "settlementId": sid,
                           "type": body["type"], "amount": body["amount"], "reason": body["reason"],
+                          "reference": body.get("reference"),
                           "debitAccount": "ACC-WRITE-OFF" if body["type"] == "WRITE_OFF" else "ACC-2000",
                           "creditAccount": "ACC-2000" if body["type"] == "WRITE_OFF" else "ACC-1000"}
             self.data["adjustments"].setdefault(sid, []).append(adjustment)

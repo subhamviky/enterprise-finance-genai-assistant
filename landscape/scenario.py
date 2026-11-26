@@ -233,6 +233,14 @@ def main() -> None:
          and sum(moved.values()) == 0 and Decimal("2.50") in [abs(v) for v in moved.values()],
          f"{posted[0]['debitAccount']} -> {posted[0]['creditAccount']}; balance changes {json.dumps({k: str(v) for k, v in moved.items()})}")
 
+    # 8b the exception is closed, and by reconciliation's own reading of the ledger (not on the assistant's word)
+    case = next((c for c in call("GET", f"{RECON}/service/v1/exceptions", headers=system("RECON")).json()
+                 if c["line_id"] == L2), {})
+    step(f"8b The reconciliation exception for {L2} is RESOLVED and names the ledger adjustment",
+         case.get("status") == "RESOLVED" and done["receipt"].get("exception", {}).get("closed") is True
+         and L2 in (posted[0].get("reference") or "") and case.get("ledger_adjustment_id") == posted[0]["adjustmentId"],
+         json.dumps({k: case.get(k) for k in ("status", "ledger_adjustment_id", "resolution")}))
+
     # 9 replays: the same request, the same approval, a redelivered event
     again = ask(f"Propose a write-off for bank line {L2}", ana)
     replay = call("POST", f"{GENAI}/api/v1/approvals/{approval}/approve", headers=bo)

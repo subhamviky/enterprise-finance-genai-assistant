@@ -144,5 +144,11 @@ def tools(env: Dict[str, str] = None, transports: Dict[str, Any] = None) -> Dict
         "get_audit_findings": HttpJsonTool(
             "get_audit_findings", url(audit), "GET", "/audits/{settlement_id}", required=("settlement_id",),
             transport=t(audit)),
+        # reconciliation-service's service route (reconciliation.resolve): closes the exception once the
+        # ledger shows the adjustment (reconciliation reads the ledger; it does not believe this call)
+        "resolve_exception": HttpJsonTool(
+            "resolve_exception", url(recon), "POST", "/service/v1/exceptions/{line_id}/resolve",
+            required=("line_id", "json"), success=lambda status, body: status == 200,
+            definitive=lambda status, body: status in (200, 404, 422), transport=t(recon), material=True),
         "post_adjustment": PostAdjustment(url(settlement), transport=t(settlement)),
     }

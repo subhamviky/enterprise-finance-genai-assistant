@@ -204,3 +204,8 @@ In reverse order, from each stack directory: `terraform destroy`. Then the found
 | An investigation answers `NOT_FOUND` or takes over a minute | the free-tier model is busy (503) or wrapped its JSON in a code fence | the assistant now bounds each model call at 12 seconds and reads fenced JSON; if it still degrades, wait or switch the profile |
 | A repeat of the scenario fails at the statement or at the proposal | an earlier run's lines or open items of the same amount | the scenario uses its own data per run; pull the current `landscape/scenario.py` |
 | Billing shows a charge | something outside the free tier | find it in Billing, Reports, group by SKU; destroy it; do not upgrade |
+
+
+## Closing the exception after an approved write-off (GCP-02 A.1)
+
+After the ledger shows the adjustment, the assistant calls reconciliation's `POST /service/v1/exceptions/{line_id}/resolve`. Grant the assistant's service account the role `reconciliation.resolve` in the reconciliation stack's `identity_subject_roles` (next to `tenant:acme` and `reconciliation.read`), then re-apply that stack and redeploy both images. Without the grant the call is refused (403): the posting still stands, the exception stays open and the receipt says so.
