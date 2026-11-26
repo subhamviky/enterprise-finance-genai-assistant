@@ -60,13 +60,19 @@ class ProposalAgent(BaseAgent):
             state['proposal_refused'] = 'not valid JSON for the proposal schema'
             return 0.0
         settlement = (state.get('settlements') or {}).get(proposal['settlement_id'])
-        reason = self.policy.check_proposal(proposal, settlement)
+        reason = self.policy.check_proposal(proposal, settlement) or self.policy.check_against_bank_line(
+            proposal, settlement, self._evidence(state, 'line'), self._evidence(state, 'recon'))
         if reason:
             state['proposal_refused'] = reason
             return 0.0
         state['proposal'] = proposal
         state['response'] = {'text': self._text(proposal), 'proposal': proposal}
         return 1.0
+
+    @staticmethod
+    def _evidence(state, source):
+        found = next((e for e in state.get('evidence') or [] if e.get('source') == source), None)
+        return found.get('data') if found else None
 
     @staticmethod
     def _text(p):

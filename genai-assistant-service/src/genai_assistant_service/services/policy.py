@@ -27,6 +27,30 @@ class Policy:
     def redact(self, text: str) -> str:
         return redact_text(text, self.redaction)[0]
 
+    @staticmethod
+    def check_against_bank_line(proposal: Dict, settlement: Optional[Dict], line: Optional[Dict],
+                                case: Optional[Dict]) -> Optional[str]:
+        """When the request is about a bank line, the adjustment must be the one that line needs: on a settlement
+        reconciliation named as a candidate, and for exactly the difference between that settlement and the line
+        (a short payment is written off, an overpayment refunded). The model drafts; this decides (GCP-02 A.2:
+        a live model once chose another COMPLETED candidate, which the other checks allowed)."""
+        action = proposal.get("action")
+        if action == "NONE" or not line or not case or not settlement:
+            return None
+        candidates = {c.get("settlement_id") for c in case.get("candidates") or []}
+        if proposal.get("settlement_id") not in candidates:
+            return f"settlement {proposal.get('settlement_id')} is not a candidate of bank line {line.get('line_id')}"
+        try:
+            paid, owed, amount = (Decimal(str(line["amount"])), Decimal(str(settlement["amount"])),
+                                  Decimal(str(proposal["amount"])))
+        except (InvalidOperation, KeyError, ValueError):
+            return "the bank line, the settlement or the amount cannot be compared"
+        gap = owed - paid if action == "WRITE_OFF" else paid - owed
+        if amount != gap:
+            what = "short by" if action == "WRITE_OFF" else "over by"
+            return f"{action} of {amount} does not match the bank line, which is {what} {gap} against that settlement"
+        return None
+
     def check_proposal(self, proposal: Dict, settlement: Optional[Dict]) -> Optional[str]:
         """Why a drafted adjustment is not allowed, or None. The model drafts; this decides."""
         action = proposal.get("action")

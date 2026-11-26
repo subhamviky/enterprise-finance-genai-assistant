@@ -208,7 +208,8 @@ def main() -> None:
     proposed = ask(f"Propose a write-off for bank line {L2}", ana)
     step("6 It proposes a write-off of 2.50 EUR and waits for a second person",
          proposed["status"] == "AWAITING_APPROVAL" and proposed["proposal"]["action"] == "WRITE_OFF"
-         and proposed["proposal"]["amount"] == "2.50" and not adjustments(s_sid), proposed["answer"][:240])
+         and proposed["proposal"]["amount"] == "2.50" and proposed["proposal"]["settlement_id"] == s_sid
+         and not adjustments(s_sid), proposed["answer"][:240])
     approval = proposed["approval_id"]
 
     # 7 four eyes
