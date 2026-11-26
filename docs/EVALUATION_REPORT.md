@@ -86,6 +86,8 @@ The same 13-step scenario, against the five services on Google Cloud Run in the 
 
 Reading the table: every step that does not call the model finishes in about a second, including the approval and the ledger posting. The two steps that call the model took 79 and 24 seconds, so the live latency of an investigation is the free-tier model's, not the landscape's. In an earlier run the model answered 503 "high demand" and the client waited its full 60 seconds; each call is now bounded at 12 seconds with one retry (`LLM_SDK_TIMEOUT`, `LLM_SDK_MAX_RETRIES`), so a busy model degrades the answer to the verified facts instead of making the caller wait.
 
+**Repeat on 26 November 2026** (`landscape-gcp`, target `cloud`, run #21 on `main`, with every fix since the first run and the cloud assistant rebuilt from `main`): every step passed again, in 1 minute 49 seconds in total for the job (the first run's scenario took about 125 seconds, with the model slower). Step 5 read 16 records and answered from them; step 6 proposed the 2.50 EUR write-off and waited; 7b refused the investigator, 7c posted once after the second person approved, 8 balanced the ledger (ACC-3000 −2.5, ACC-WRITEOFF +2.5), 9a and 9b replayed with no second posting and no second finding, 10a refused the injection and 10b refused another tenant. Each run uses its own orders and bank lines, so this was a fresh scenario on the same landscape, not a replay.
+
 Cost: the billing report for 1 to 25 November 2026 shows **₹0.00** against ₹28,569.00 of trial credit (none consumed). The budget alert is set at ₹1, so the first charge would send an e-mail.
 
 ## Live model over the 62 cases (25 and 26 November 2026)
