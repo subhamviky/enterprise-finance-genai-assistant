@@ -205,7 +205,9 @@ def main() -> None:
 
     # 6 it proposes a write-off: nothing is posted yet
     before = balances()
-    proposed = ask(f"Propose a write-off for bank line {L2}", ana)
+    # the scanners' amount repeats across runs (20 quantities), so two settlements can fit the line equally:
+    # the investigator names the settlement, as a person would when asked which one
+    proposed = ask(f"Propose a write-off for bank line {L2} on settlement {s_sid}", ana)
     step("6 It proposes a write-off of 2.50 EUR and waits for a second person",
          proposed["status"] == "AWAITING_APPROVAL" and proposed["proposal"]["action"] == "WRITE_OFF"
          and proposed["proposal"]["amount"] == "2.50" and proposed["proposal"]["settlement_id"] == s_sid
@@ -243,7 +245,7 @@ def main() -> None:
          json.dumps({k: case.get(k) for k in ("status", "ledger_adjustment_id", "resolution")}))
 
     # 9 replays: the same request, the same approval, a redelivered event
-    again = ask(f"Propose a write-off for bank line {L2}", ana)
+    again = ask(f"Propose a write-off for bank line {L2} on settlement {s_sid}", ana)
     replay = call("POST", f"{GENAI}/api/v1/approvals/{approval}/approve", headers=bo)
     step("9a The same request and the same approval are replayed: no second posting",
          len(adjustments(s_sid)) == 1 and again["status"] in ("REPLAYED", "COMPLETED") and replay.status_code == 403,

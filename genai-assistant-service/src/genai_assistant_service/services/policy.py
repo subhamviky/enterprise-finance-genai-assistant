@@ -29,7 +29,8 @@ class Policy:
 
     @staticmethod
     def check_against_bank_line(proposal: Dict, settlement: Optional[Dict], line: Optional[Dict],
-                                case: Optional[Dict]) -> Optional[str]:
+                                case: Optional[Dict], named: Optional[str] = None,
+                                settlements: Optional[Dict[str, Dict]] = None) -> Optional[str]:
         """When the request is about a bank line, the adjustment must be the one that line needs: on a settlement
         reconciliation named as a candidate, and for exactly the difference between that settlement and the line
         (a short payment is written off, an overpayment refunded). The model drafts; this decides (GCP-02 A.2:
@@ -49,6 +50,14 @@ class Policy:
         if amount != gap:
             what = "short by" if action == "WRITE_OFF" else "over by"
             return f"{action} of {amount} does not match the bank line, which is {what} {gap} against that settlement"
+        if named:                                   # the person said which settlement: that one, nothing else
+            return None if proposal.get("settlement_id") == named else \
+                f"the request names settlement {named}, not {proposal.get('settlement_id')}"
+        fits = [sid for sid, s in (settlements or {}).items() if sid in candidates and s.get("status") == "COMPLETED"
+                and (Decimal(str(s["amount"])) - paid if action == "WRITE_OFF" else paid - Decimal(str(s["amount"]))) == amount]
+        if len(fits) > 1:
+            return (f"{len(fits)} candidate settlements fit this bank line equally ({', '.join(sorted(fits))}): "
+                    "name the settlement to adjust")
         return None
 
     def check_proposal(self, proposal: Dict, settlement: Optional[Dict]) -> Optional[str]:

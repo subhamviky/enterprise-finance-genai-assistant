@@ -293,3 +293,17 @@ def test_a_write_off_on_the_wrong_candidate_or_amount_is_refused(assistant, land
     assert "does not match" in check({**ok, "amount": "10.00"}, short, line, case)
     assert check({**ok, "action": "REFUND"}, short, line, case)                    # a short payment is not refunded
     assert check(ok, short, None, None) is None                                    # a question about a settlement only
+
+
+def test_two_equally_fitting_settlements_are_not_guessed_and_a_named_one_is_honoured():
+    from genai_assistant_service.services.policy import Policy
+    line = {"line_id": "L-1", "amount": "1365.50"}
+    case = {"candidates": [{"settlement_id": "S-A"}, {"settlement_id": "S-B"}]}
+    both = {"S-A": {"amount": "1368.00", "status": "COMPLETED"}, "S-B": {"amount": "1368.00", "status": "COMPLETED"}}
+    proposal = {"action": "WRITE_OFF", "settlement_id": "S-B", "amount": "2.50"}
+    check = Policy.check_against_bank_line
+    assert "name the settlement" in check(proposal, both["S-B"], line, case, settlements=both)
+    assert check(proposal, both["S-B"], line, case, named="S-B", settlements=both) is None
+    assert "names settlement S-A" in check(proposal, both["S-B"], line, case, named="S-A", settlements=both)
+    only_one = {"S-A": both["S-A"], "S-B": {"amount": "1400.00", "status": "COMPLETED"}}
+    assert check({**proposal, "settlement_id": "S-A"}, both["S-A"], line, case, settlements=only_one) is None
