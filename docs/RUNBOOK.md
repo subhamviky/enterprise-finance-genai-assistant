@@ -209,3 +209,13 @@ In reverse order, from each stack directory: `terraform destroy`. Then the found
 ## Closing the exception after an approved write-off (GCP-02 A.1)
 
 After the ledger shows the adjustment, the assistant calls reconciliation's `POST /service/v1/exceptions/{line_id}/resolve`. Grant the assistant's service account the role `reconciliation.resolve` in the reconciliation stack's `identity_subject_roles` (next to `tenant:acme` and `reconciliation.read`), then re-apply that stack and redeploy both images. Without the grant the call is refused (403): the posting still stands, the exception stays open and the receipt says so.
+
+## Multi-trial live evaluation (GCP-02 A.2)
+
+`landscape/live_trials.py` runs six scenarios N times each against the stand-ins with the live model, and checks facts (what was posted, on which settlement and amount, whether the exception closed, nothing written before approval) instead of wording. A trial is `pass`, `fallback` (the system stayed safe but the model gave no usable draft) or `wrong-fact`; a 429 stops the run and the report says where. From `genai-assistant-service`, with the gate's environment (`E2A_PROVIDER_PROFILE=gemini_api`, `GEMINI_API_KEY`, `LLM_MODEL_ID`):
+
+```bash
+python ../landscape/live_trials.py --trials 5 --pause 15 --report trials-$(date +%F)-$LLM_MODEL_ID.json
+```
+
+Five trials of the six scenarios is about 50 model requests and 8 minutes. Free-tier limits apply per project per day (see the model table in the GCP-02 plan); run one model per day and keep the report, which names the model, date, trials and pause.
