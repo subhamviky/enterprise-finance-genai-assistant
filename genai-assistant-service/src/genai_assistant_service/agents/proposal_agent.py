@@ -61,7 +61,8 @@ class ProposalAgent(BaseAgent):
             return 0.0
         settlement = (state.get('settlements') or {}).get(proposal['settlement_id'])
         reason = self.policy.check_proposal(proposal, settlement) or self.policy.check_against_bank_line(
-            proposal, settlement, self._evidence(state, 'line'), self._evidence(state, 'recon'))
+            proposal, settlement, self._evidence(state, 'line'), self._evidence(state, 'recon'),
+            named=state.get('settlement_id'), settlements=state.get('settlements'))
         if reason:
             state['proposal_refused'] = reason
             return 0.0
