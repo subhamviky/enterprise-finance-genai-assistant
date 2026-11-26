@@ -5,11 +5,14 @@
 For each case: the status, intent, whether the answer is degraded, the model errors (a 429 or a 503 shows here), the
 records read, and the answer's first 300 characters. It waits between cases so a free-tier limit of 15 requests a
 minute is not hit by the script itself (LIVE_CASE_PAUSE seconds, default 15)."""
+import functools
 import json
 import os
 import sys
 import time
 from pathlib import Path
+
+print = functools.partial(print, flush=True)          # show each case as it finishes, even through a pipe
 
 ROOT = Path(__file__).resolve().parents[1] / "genai-assistant-service"
 sys.path.insert(0, str(ROOT / "src"))
