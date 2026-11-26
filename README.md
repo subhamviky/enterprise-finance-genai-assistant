@@ -7,6 +7,12 @@ an adjustment only after **a second person approves**, exactly once.
 
 > **Reference implementation, not a production service.** Synthetic data only (tenant `acme`); it
 > runs on the Google Cloud free tier with Gemini's free tier. See [SECURITY.md](SECURITY.md).
+>
+> **Verified in the cloud (25 November 2026):** the five-service landscape ran in a real Google Cloud free-tier
+> project and the end-to-end scenario passed against the deployed services (about 125 seconds; billing 0.00 of
+> the trial credit). Run against the live model (`gemini-3.5-flash-lite`, free tier), the 53 golden cases
+> scored 0.943 on average and all nine red-team cases passed (0.855 before two fixes the live run found). See the
+> [evaluation report](docs/EVALUATION_REPORT.md) for what that does and does not show.
 
 It is the fourth application of a landscape built on the [E2A](https://github.com/subhamviky/e2a-framework)
 contracts (hub design note GCP-01) and depends on the other three:
@@ -67,7 +73,7 @@ which keep their HTTP contracts and guarantees (idempotent adjustments, tenant c
 | Document | What |
 |---|---|
 | [`docs/design/GenAI_Assistant_Design_Document.pdf`](docs/design/GenAI_Assistant_Design_Document.pdf) ([Markdown source](docs/design/GENAI_ASSISTANT_DESIGN.md)) | the design: requirements traced to the code, architecture, contracts, the failure-injection matrix, verification, gaps |
-| [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | the 53 golden and 9 red-team cases, the measures, and what the evidence does and does not prove |
+| [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | the 53 golden and 9 red-team cases (wiring evidence), the live cloud run and the live-model evaluation, the findings that changed the code, and what the evidence does and does not prove |
 | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | the cutover to Google Cloud on the free tier, operating, teardown, troubleshooting |
 | [`SECURITY.md`](SECURITY.md) | what the design guarantees, and where each guarantee is tested |
 
@@ -77,7 +83,7 @@ which keep their HTTP contracts and guarantees (idempotent adjustments, tenant c
 |---|---|
 | [`landscape/foundation`](landscape/foundation) | applied once for the whole landscape: the APIs, one Artifact Registry repository (a cleanup policy keeps it within the free 0.5 GB), the project's one free Firestore database (shared; each service keeps its own collections), a state bucket, GitHub Actions deployment through Workload Identity Federation (no JSON key), a budget alert at the first cent, and the Gemini key's secret (its value is added by hand) |
 | [`genai-assistant-service/infra`](genai-assistant-service/infra) | the assistant: Cloud Run scaled to zero with one instance, private (Cloud Run IAM), its state in Firestore, its own Google ID token to the four systems, Gemini's free tier with the key from Secret Manager |
-| [`deploy/gcp`](deploy/gcp) | `landscape.vars` (the values every repository shares) and `binding.vars` (the assistant's): placeholders until the account exists; [`landscape/tfvars.py`](landscape/tfvars.py) turns them into one stack's Terraform inputs |
+| [`deploy/gcp`](deploy/gcp) | `landscape.vars` (the values every repository shares) and `binding.vars` (the assistant's): placeholders in the repository (a deployment's real values are kept outside it); [`landscape/tfvars.py`](landscape/tfvars.py) turns them into one stack's Terraform inputs, and [`landscape/move-state.sh`](landscape/move-state.sh) moves the stacks' state into the state bucket |
 
 Free-tier limits are enforced by the configuration: Always Free regions only, `simulated` or `gemini_api` models only, never a public service. CI plans both stacks against a mock provider.
 
@@ -85,4 +91,14 @@ Free-tier limits are enforced by the configuration: Always Free regions only, `s
 
 [`landscape/scenario.py`](landscape/scenario.py) is the acceptance test of the whole landscape (hub design note GCP-01, Section 7): an order goes through order-to-cash and settlement; settlement's event reaches audit-ai through Pub/Sub, and a large settlement is flagged; a bank statement with a short payment reaches reconciliation, which raises an exception; the assistant explains it with citations to what it read, proposes a write-off, and waits; the investigator cannot approve it, a second person can; one adjustment is in the ledger, which stays balanced; the same request, the same approval and a redelivered event are replayed with no second posting and no second finding; an injection is refused and another tenant reads nothing.
 
-The [`landscape-gcp`](.github/workflows/landscape-gcp.yml) workflow runs it: `target: local` starts the five services from the `main` branch of their repositories in their Google Cloud configuration (state in the Firestore emulator, events through the Pub/Sub emulator, the ledger in PostgreSQL, the assistant behind Cloud Run-style identity); `target: cloud` runs the same steps against the deployed services after the cutover.
+The [`landscape-gcp`](.github/workflows/landscape-gcp.yml) workflow runs it: `target: local` starts the five services from the `main` branch of their repositories in their Google Cloud configuration (state in the Firestore emulator, events through the Pub/Sub emulator, the ledger in PostgreSQL, the assistant behind Cloud Run-style identity); `target: cloud` runs the same steps against the deployed services through Workload Identity Federation (no stored key): it **passed on 25 November 2026**. Step 7a (the requester approving their own proposal) runs only in the local target, because with real identities the approver account is a second person. Each run uses its own orders, bank lines and amounts, so it can be repeated.
+
+## Run it against the real model
+
+Two small tools for the live model (a free Gemini key; the key is read from Secret Manager into one command, never into a file; see [`docs/RUNBOOK.md`](docs/RUNBOOK.md), Section 8):
+
+| Tool | What |
+|---|---|
+| `python -m genai_assistant_service.release.gate --skip-tests` with `E2A_PROVIDER_PROFILE=gemini_api` | the 53 golden and 9 red-team cases against the live model |
+| [`landscape/live_cases.py`](landscape/live_cases.py) `CASE_ID ...` | runs chosen cases and prints status, intent, degradation, model errors (a 429 shows here) and the answer |
+| [`landscape/probe_model.py`](landscape/probe_model.py) `MODEL_ID ...` | what a Gemini API model accepts with the features the adapter sends (system prompt, thinking level, JSON) |
