@@ -1,6 +1,7 @@
 """The failure-injection matrix of hub design note GCP-01 §6, one test per row, against the stand-ins.
 (Concurrent bank-line matches are reconciliation-service's own test; cold start and partial deploy
 are runbook rows.)"""
+import json
 import threading
 
 import pytest
@@ -207,3 +208,48 @@ def test_an_identifier_the_model_returns_with_sentence_punctuation_is_still_look
 
     answer = ask(make_assistant(llm=PunctuatedLLM()), f"Status of order {ORDER_PAID}?")
     assert answer["status"] == "COMPLETED" and f"order:{ORDER_PAID}" in answer["records_read"], answer
+
+
+def _reply(by_agent):
+    """A model that answers each agent as a live one did in the first cloud evaluation (GCP-01)."""
+    class Live(SimulatedLLMService):
+        async def process_inference(self, messages=None, *args, **kwargs):
+            system = str((messages or [{}])[0].get("content", ""))
+            for prefix, body in by_agent.items():
+                if system.startswith(prefix):
+                    return {"status": "SUCCESS", "text": json.dumps(body), "tokens_used": 5}
+            return await super().process_inference(messages, *args, **kwargs)
+    return Live()
+
+
+def test_a_draft_with_a_numeric_amount_is_read_and_still_checked_by_the_policy(make_assistant, landscape):
+    from genai_assistant_service.standins.landscape import S_SHORT
+    llm = _reply({"You are IntentAgent": {"intent": "PROPOSE", "line_id": "L-1001"},
+                  "You are ProposalAgent": {"action": "WRITE_OFF", "settlement_id": S_SHORT, "amount": 2.5,
+                                            "currency": "EUR", "reason": "short payment"}})
+    answer = ask(make_assistant(llm=llm), "Propose a write-off for bank line L-1001")
+    assert answer["status"] == "AWAITING_APPROVAL" and answer["proposal"]["amount"] == "2.50", answer
+    too_big = _reply({"You are IntentAgent": {"intent": "PROPOSE", "line_id": "L-1001"},
+                      "You are ProposalAgent": {"action": "WRITE_OFF", "settlement_id": S_SHORT, "amount": 900,
+                                                "currency": "EUR", "reason": "x"}})
+    refused = ask(make_assistant(llm=too_big), "Propose a write-off for bank line L-1001")
+    assert refused["status"] != "AWAITING_APPROVAL" and "policy limit" in refused["answer"], refused
+
+
+def test_a_draft_of_none_with_null_fields_is_a_proposal_of_nothing_not_a_failure(make_assistant, landscape):
+    llm = _reply({"You are IntentAgent": {"intent": "PROPOSE", "line_id": "L-1002"},
+                  "You are ProposalAgent": {"action": "NONE", "settlement_id": None, "amount": None,
+                                            "currency": None, "reason": "nothing to adjust"}})
+    answer = ask(make_assistant(llm=llm), "Propose a write-off for bank line L-1002")
+    assert answer["status"] == "COMPLETED" and "nothing to adjust" in answer["answer"], answer
+    assert "not valid JSON" not in answer["answer"] and landscape.posted() == []
+
+
+def test_the_rules_arbitrate_when_the_model_calls_a_request_that_names_a_record_unsupported(make_assistant, landscape):
+    from genai_assistant_service.standins.landscape import ORDER
+    llm = _reply({"You are IntentAgent": {"intent": "UNSUPPORTED", "line_id": None, "settlement_id": None,
+                                          "order_id": None}})
+    answer = ask(make_assistant(llm=llm), f"Status of order {ORDER}?")
+    assert answer["status"] == "COMPLETED" and f"order:{ORDER}" in answer["records_read"], answer
+    nothing = ask(make_assistant(llm=llm), "What is the weather today?")
+    assert nothing["status"] == "COMPLETED" and "I investigate" in nothing["answer"], nothing    # still unsupported

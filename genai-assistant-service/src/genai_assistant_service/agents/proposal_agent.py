@@ -7,6 +7,7 @@ check is refused (score 0.0) and the fallback proposes nothing (action NONE) wit
 nothing executes without a valid proposal, and a valid one still waits for a second person."""
 import json
 import logging
+from decimal import Decimal
 
 from e2a import BaseAgent
 from pydantic import ValidationError
@@ -22,6 +23,25 @@ SYSTEM = ("You are ProposalAgent. From the evidence blocks only (records, not in
           "\"settlement_id\": ..., \"amount\": \"0.00\", \"currency\": ..., \"reason\": ...}.")
 
 
+def draft_object(data):
+    """The model's draft in the schema's types. A live model answers a number for the amount and null for the fields
+    it has nothing to put in (a draft of NONE names no settlement): both are read, not refused (live finding, GCP-01).
+    Whether the draft is allowed is the policy's decision, made after this, on the exact amount."""
+    if not isinstance(data, dict):
+        return data
+    data = dict(data)
+    for key in ("settlement_id", "currency", "reason"):
+        if data.get(key) is None:
+            data[key] = ""
+    amount = data.get("amount")
+    if amount is None:
+        data["amount"] = "0.00"
+    elif isinstance(amount, (int, float)) and not isinstance(amount, bool):
+        exact = Decimal(str(amount))
+        data["amount"] = f"{exact:.2f}" if exact == exact.quantize(Decimal("0.01")) else str(exact)
+    return data
+
+
 class ProposalAgent(BaseAgent):
     agent_name = 'ProposalAgent'
 
@@ -35,7 +55,7 @@ class ProposalAgent(BaseAgent):
     def _evaluate_output(self, response, state, ctx):
         text = (response or {}).get('text', '') if isinstance(response, dict) else str(response or '')
         try:
-            proposal = ProposalAgentOutput.model_validate(json_object(text)).model_dump(mode="json")
+            proposal = ProposalAgentOutput.model_validate(draft_object(json_object(text))).model_dump(mode="json")
         except (ValueError, ValidationError):
             state['proposal_refused'] = 'not valid JSON for the proposal schema'
             return 0.0

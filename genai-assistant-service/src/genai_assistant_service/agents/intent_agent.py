@@ -82,6 +82,16 @@ class IntentAgent(BaseAgent):
             data[key] = clean_id(data.get(key), query)
         if data['intent'] != 'UNSUPPORTED' and not any(data.get(k) for k in ('line_id', 'settlement_id', 'order_id')):
             data['intent'] = 'UNSUPPORTED'                           # nothing to look at
+        if data['intent'] == 'UNSUPPORTED':
+            # The model found nothing to do. If the request itself names a bank line, settlement or order, the rules
+            # read it deterministically; a small free-tier model sometimes answers UNSUPPORTED to a plain
+            # "Status of order ORD-...?" (live finding, GCP-01). Investigating is read-only; a proposal still waits
+            # for a second person.
+            ruled = rule_intent(query)
+            if ruled['intent'] != 'UNSUPPORTED':
+                data = {**data, **{k: ruled.get(k) for k in ('line_id', 'settlement_id', 'order_id')},
+                        'intent': ruled['intent']}
+                state['degraded'] = True
         state.update({k: v for k, v in data.items() if v is not None})
         return 1.0
 

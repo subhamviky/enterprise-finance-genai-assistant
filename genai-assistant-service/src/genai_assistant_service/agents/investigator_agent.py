@@ -39,7 +39,10 @@ class InvestigatorAgent(BaseAgent):
     def _evaluate_output(self, response, state, ctx):
         text = (response or {}).get('text', '') if isinstance(response, dict) else str(response or '')
         try:
-            answer = InvestigatorAgentOutput.model_validate(json_object(text)).model_dump(mode="json")
+            raw = json_object(text)
+            if isinstance(raw, dict):                                   # null where a list is empty (live)
+                raw = {**raw, **{k: [] for k in ("citations", "verified", "inferred") if raw.get(k) is None}}
+            answer = InvestigatorAgentOutput.model_validate(raw).model_dump(mode="json")
         except (ValueError, ValidationError):
             state['grounding_failure'] = 'not valid JSON for the answer schema'
             return 0.0
