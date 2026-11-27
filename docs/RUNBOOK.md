@@ -233,3 +233,13 @@ It counts the entries in each of the five services' logs; every service should s
 ## The scenario buys goods: stock (and the ledger) are finite
 
 Each scenario run buys 3 printers and 2 to 21 scanners from O2C, whose stock is seeded once (50 printers, 200 scanners), and moves 150,000 EUR between two ledger accounts. After about 16 runs the printers are gone and step 1 fails with orders `REFUSED` ("insufficient stock"; the step prints the reason). For this landscape, set `daily_restock = true` in the O2C stack (Terraform variable; it sets `O2C_DAILY_RESTOCK=true`): each SKU is topped up to its catalog level once a day. Until the stack is applied, the same effect with no Terraform: `gcloud run services update o2c-agent-service-dev --region us-central1 --update-env-vars O2C_DAILY_RESTOCK=true` (a new revision starts and tops the stock up). Where stock is real, leave it off.
+
+## Service level objectives (GCP-02 Phase B, item 8)
+
+`landscape/observability` creates, from Cloud Run's own request metrics (not charged; an SLO has no price): an availability SLO for each of the five services (99% of requests are not server errors, 28 days), a latency SLO for the two services with no model in the path (settlement and reconciliation: 95% of requests within 1 s), and a fast-burn alert for each (the error budget spent 10 times faster than allowed, over one hour). The alerts have no notification channel unless you pass `notification_channels`, so nothing is sent; the alerting charge in Google's table starts on 1 September 2027. Apply it by hand once the five services exist:
+
+```bash
+cd landscape/observability && terraform init && terraform apply -var project_id=finance-ai-landscape-123456
+```
+
+Then open Monitoring, Services, and read each service's SLO page: the compliance and the remaining error budget. Destroy it with the other stacks at the end (`terraform destroy`).
