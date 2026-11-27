@@ -30,4 +30,17 @@ Not yet recorded.
 
 ## Drill 3: restore of the ledger backup
 
-Ran to its end (the scratch database was dropped). Counts and timing not yet recorded.
+Run in Cloud Shell on 27 November 2026, restoring into a scratch database and never touching the live one.
+
+| Measured | Result |
+|---|---|
+| Backup restored | `settlement-20261127T122429Z.sql.gz`, 23,834 bytes (taken by the VM's daily timer, plus one started by hand) |
+| Integrity (`gunzip -t`) | a whole, valid gzip |
+| Settlements, live database | 54 |
+| **Settlements, restored database** | **54** (equal) |
+| Time for the restore | 31 s in total (four IAP connections, a 24 KB dump) |
+| Cleanup | the scratch database was dropped; the live one was not touched |
+
+**What the first attempt taught.** The drill first ran the restore from the database VM and failed: `gzip: unexpected end of file`, then an empty scratch database. The VM's service account can create objects in the backup bucket but cannot read them (`roles/storage.objectCreator`, on purpose: a compromised database host cannot read or delete its own backups). The download got a 403 that `curl -sf` hid, and `gunzip` received nothing. So the failed attempt proved the write-only backup account, and the drill was corrected to restore the way an operator would: download from Cloud Shell, check the file, stream it into the VM.
+
+What this shows: the backup is not just present, it restores to the same row count; and the backup path is least-privilege, so restoring is a deliberate act by a person with access, not something the database host can do on its own.
