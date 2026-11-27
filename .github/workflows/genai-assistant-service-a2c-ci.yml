@@ -76,6 +76,12 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
+      - name: Where is the finding? (only when the scan fails)
+        if: failure()
+        run: |
+          docker run --rm --entrypoint sh genai-assistant-service:${{ github.sha }} -c '
+            echo "--- every setuptools in the image"; find / -xdev \( -iname "setuptools*" -o -iname "pkg_resources" \) -not -path "/proc/*" 2>/dev/null | head -40
+            echo "--- files that say 70.3.0"; grep -rIl "70\.3\.0" /app /usr/local/lib/python3.12 2>/dev/null | head -20'
 
   deploy:
     runs-on: ubuntu-latest
