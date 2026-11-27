@@ -14,10 +14,11 @@ FROM python:3.12-slim AS runtime
 WORKDIR /app
 # Patch the base image's OS packages: the image scan fails the build on a HIGH finding that has a fix (libzstd1)
 RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
-# and the base image's setuptools (CVE-2025-47273, fixed in 78.1.1); the app runs from its own venv, not from this copy
-RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1"
 RUN groupadd -r appgroup && useradd -r -g appgroup -u 1001 appuser
 COPY --from=builder /app/.venv /app/.venv
+# setuptools 70.3.0 comes with the virtualenv Poetry creates (CVE-2025-47273, fixed in 78.1.1): upgrade it in the venv
+# (the system Python of this base image has no setuptools); pip of the system installs into that venv
+RUN pip --python /app/.venv/bin/python install --no-cache-dir --upgrade "setuptools>=78.1.1"
 COPY src/ /app/src/
 COPY policies/ /app/policies/
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src"
