@@ -44,3 +44,27 @@ Run in Cloud Shell on 27 November 2026, restoring into a scratch database and ne
 **What the first attempt taught.** The drill first ran the restore from the database VM and failed: `gzip: unexpected end of file`, then an empty scratch database. The VM's service account can create objects in the backup bucket but cannot read them (`roles/storage.objectCreator`, on purpose: a compromised database host cannot read or delete its own backups). The download got a 403 that `curl -sf` hid, and `gunzip` received nothing. So the failed attempt proved the write-only backup account, and the drill was corrected to restore the way an operator would: download from Cloud Shell, check the file, stream it into the VM.
 
 What this shows: the backup is not just present, it restores to the same row count; and the backup path is least-privilege, so restoring is a deliberate act by a person with access, not something the database host can do on its own.
+
+## Drill 4: redeploy the assistant while an approval waits
+
+Run on 27 November 2026 with the scenario split in two phases around a redeploy (the `phase`, `run` and `state` inputs of the `landscape-gcp` workflow).
+
+| Measured | Result |
+|---|---|
+| Propose phase (steps 1 to 6) | passed at 13:32 UTC; the write-off was proposed and approval `ae724825-d200-4db2-a879-6ac5fcf83035` waited, nothing posted |
+| Revision serving before the redeploy | `genai-assistant-service-00018-nww` |
+| Revision after the redeploy | `genai-assistant-service-00019-h48` (a new revision, same code, forced by an environment variable) |
+| Approve phase (steps 7 to 10) | passed at 13:44 UTC, on the new revision |
+| How long the approval waited | about 12 minutes, across the redeploy |
+| Step 7b | an investigator cannot approve (403) |
+| Step 7c | a second person approved an approval created under the old revision; the adjustment `fac0744b-6347-4277-8314-9661bf9f9e6d` was posted and read back from the ledger |
+| Step 8 | one write-off of 2.50 EUR in the ledger, balanced (`ACC-3000` to `ACC-WRITEOFF`) |
+| Step 8b | the reconciliation exception `BANK-ffe4a6-2` is RESOLVED and names that adjustment |
+| Step 9a | the same request and the same approval replayed: no second posting (the second approval was refused, HTTP 403) |
+| Steps 9b, 10a, 10b | one finding only; an injection refused; another tenant refused |
+| Correlation id of the run | `scenario-ffe4a6` |
+
+What this shows: a proposal waiting for a second person lives in Firestore, not in the service. A new Cloud Run revision deployed in the middle did not lose it, and the approval then posted exactly once, closed the reconciliation exception, and left the ledger balanced. The same property is tested in CI without a cloud (`tests/test_approval_recovery.py`: a second service instance on the same state; two instances deciding at once post once; a rejection survives a restart; an approval nobody answers expires after 24 hours and posts nothing).
+
+The first attempt of the approve phase failed before it started: the `state` input had the log line's `DRILL_STATE ` prefix, which the scenario did not accept. The approval was untouched and waiting; the scenario now accepts the line as printed and names the input that is wrong.
+
