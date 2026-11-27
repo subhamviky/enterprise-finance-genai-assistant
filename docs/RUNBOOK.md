@@ -219,3 +219,13 @@ python ../landscape/live_trials.py --trials 5 --pause 15 --report trials-$(date 
 ```
 
 Five trials of the six scenarios is about 50 model requests and 8 minutes. Free-tier limits apply per project per day (see the model table in the GCP-02 plan); run one model per day and keep the report, which names the model, date, trials and pause.
+
+## Following one run through the services (GCP-02 Phase B, item 3)
+
+The scenario sends one `X-Correlation-Id` (`scenario-<run>`) on every call and prints it at the end. The four Python services log one JSON line per request with it (`event: http_request`), the assistant sends it on every call to the other systems, and settlement-service reads it. After a cloud run, in Cloud Shell:
+
+```bash
+~/enterprise-finance-genai-assistant/landscape/trace_check.sh scenario-<run>
+```
+
+It counts the entries in each of the five services' logs; every service should show at least one. The traces in Cloud Trace need the OpenTelemetry exporter, which is a later step of Phase B.

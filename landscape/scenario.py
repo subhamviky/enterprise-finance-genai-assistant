@@ -64,6 +64,7 @@ def finish(code: int) -> None:
             out.write("## Landscape scenario (GCP-01 §7)\n\n| Step | Result | Detail |\n|---|---|---|\n")
             for title, ok, detail in transcript:
                 out.write(f"| {title} | {'✅' if ok else '❌'} | {detail.replace('|', '/')[:300]} |\n")
+    print(f"correlation id of this run: {CORRELATION_ID}  (landscape/trace_check.sh {CORRELATION_ID})", flush=True)
     print("SCENARIO", "PASSED" if code == 0 else "FAILED", flush=True)
     sys.exit(code)
 
@@ -90,7 +91,11 @@ def person(email: str, role: str, tenant: str = TENANT) -> dict:
     return {"X-Tenant-Id": tenant, "X-User-Id": email, "X-User-Role": role}
 
 
+CORRELATION_ID = f"scenario-{RUN}"      # one id for the whole run: every service logs it (GCP-02 Phase B, item 3)
+
+
 def call(method: str, url: str, **kwargs) -> httpx.Response:
+    kwargs["headers"] = {"X-Correlation-Id": CORRELATION_ID, **(kwargs.get("headers") or {})}
     return httpx.request(method, url, timeout=150, **kwargs)
 
 
