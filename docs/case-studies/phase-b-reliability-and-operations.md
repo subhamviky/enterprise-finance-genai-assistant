@@ -18,7 +18,7 @@ By the end of Phase A the landscape ran end to end on the real cloud: an order, 
 | Drill | Result |
 |---|---|
 | Ledger VM stopped | health went to no answer; **40 s** from the start request to healthy again, no repair by hand; the scenario failed during the outage and passed after |
-| Pub/Sub paused | the scenario failed at the audit step while paused and passed after the restore; events waited, none were lost |
+| Pub/Sub paused | the scenario failed at the audit step while paused; **10 s** after the restore the first push arrived, and 4 events (the failed run's backlog) were delivered in the next minute; the next scenario run passed all 14 steps; none were lost |
 | Backup restored | the dump was a valid gzip and restored to **54 settlements, equal to the live 54**, in 31 s |
 | Redeploy mid-approval | an approval made on revision 00018 was approved 12 minutes later on 00019, posted once, closed the reconciliation exception, left the ledger balanced |
 | Settlement SLOs after the outage | 40.7 % of the availability error budget and 60.5 % of the latency budget left: the drill is visible in the budget |
@@ -40,7 +40,6 @@ The scenario no longer drains anything; reconciliation consumes the open item it
 - Traffic here is small (a scenario run is a few dozen requests), so an objective's percentage swings on a handful of requests. The numbers show the mechanism works, not a service's real reliability.
 - Four drills on one deployment are not a reliability programme. There is no load test, no regional failure, no chaos in production.
 - Cloud Trace spans, a log-based token and fallback metric, and a shorter database connection timeout (30 s today, so an outage makes requests hang rather than fail fast) are recorded but not done.
-- The audit-feed drill's delivery latency was not captured in the cloud shell on the day.
 - One author, one project, simulated customer.
 
 ## Where to look
