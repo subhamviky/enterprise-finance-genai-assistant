@@ -158,7 +158,7 @@ def main() -> None:
          f"{printers['order']['order_id']} {printers['order']['amount']} EUR; {scanners['order']['order_id']} "
          f"{scanners['order']['amount']} EUR; statuses {printers['order']['status']} / {scanners['order']['status']}"
          + ("" if printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID"
-            else f" (settlement-service or its ledger may be down: {json.dumps({k: v for k, v in printers['order'].items() if k in ('settlement_id', 'failure_reason', 'detail')})[:200]})"))
+            else f" (reasons: {printers['order'].get('reason')!r} / {scanners['order'].get('reason')!r}; 'insufficient stock' means the landscape's seeded stock is used up: see the runbook, O2C_DAILY_RESTOCK)")
 
     # 2 and 3: the events reach audit-ai; a large settlement is flagged
     found = eventually(lambda: findings(s_sid), "audit-ai's finding for the scanners' settlement")
