@@ -48,6 +48,7 @@ transcript = []
 RUN = os.getenv("SCENARIO_RUN") or uuid.uuid4().hex[:6]       # a repeat run on the same landscape starts clean
 SCANNERS = 2 + int(RUN, 16) % 20          # units: the settlement's amount differs from earlier runs' open items
 L1, L2 = f"BANK-{RUN}-1", f"BANK-{RUN}-2"
+PHASE = os.getenv("SCENARIO_PHASE", "all")   # all | propose (steps 1-6, then stop) | approve (steps 7-10, from SCENARIO_STATE)
 
 
 def step(title: str, ok: bool, detail: str) -> None:
@@ -138,88 +139,99 @@ def main() -> None:
     sales = {"X-Tenant-Id": TENANT, "X-User-Id": "sam.sales", "X-User-Role": "sales", **system("O2C")}
     ana, bo = person(INVESTIGATOR, "investigator"), person(APPROVER, "finance-approver")
 
-    # 1 an order, paid through settlement-service
-    def order(text: str, key: str) -> dict:
-        r = call("POST", f"{O2C}/api/v1/assistant", json={"text": text}, headers={**sales, "Idempotency-Key": f"scn-{RUN}-{key}"})
-        body = r.text[:400]
-        try:
-            data = r.json()
-        except ValueError:
-            data = {}
-        if "order" not in data:                       # show what the service said instead of a bare KeyError
-            step("1 An order through o2c-agent-service", False, f"HTTP {r.status_code}: {body}")
-        return data
+    if PHASE != "approve":
+        # 1 an order, paid through settlement-service
+        def order(text: str, key: str) -> dict:
+            r = call("POST", f"{O2C}/api/v1/assistant", json={"text": text}, headers={**sales, "Idempotency-Key": f"scn-{RUN}-{key}"})
+            body = r.text[:400]
+            try:
+                data = r.json()
+            except ValueError:
+                data = {}
+            if "order" not in data:                       # show what the service said instead of a bare KeyError
+                step("1 An order through o2c-agent-service", False, f"HTTP {r.status_code}: {body}")
+            return data
 
-    printers = order("Order 3 units of SKU-100 for customer CUST-ACME", "printers")
-    scanners = order(f"Order {SCANNERS} units of SKU-200 for customer CUST-ACME", "scanners")
-    p_sid, s_sid = printers["order"]["settlement_id"], scanners["order"]["settlement_id"]
-    step("1 Orders for 3 printers and some scanners are paid",
-         printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID",
-         f"{printers['order']['order_id']} {printers['order']['amount']} EUR; {scanners['order']['order_id']} "
-         f"{scanners['order']['amount']} EUR; statuses {printers['order']['status']} / {scanners['order']['status']}"
-         + ("" if printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID"
-            else f" (reasons: {printers['order'].get('reason')!r} / {scanners['order'].get('reason')!r}; 'insufficient stock' means the landscape's seeded stock is used up: see the runbook, O2C_DAILY_RESTOCK)"))
+        printers = order("Order 3 units of SKU-100 for customer CUST-ACME", "printers")
+        scanners = order(f"Order {SCANNERS} units of SKU-200 for customer CUST-ACME", "scanners")
+        p_sid, s_sid = printers["order"]["settlement_id"], scanners["order"]["settlement_id"]
+        step("1 Orders for 3 printers and some scanners are paid",
+             printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID",
+             f"{printers['order']['order_id']} {printers['order']['amount']} EUR; {scanners['order']['order_id']} "
+             f"{scanners['order']['amount']} EUR; statuses {printers['order']['status']} / {scanners['order']['status']}"
+             + ("" if printers["order"]["status"] == "PAID" and scanners["order"]["status"] == "PAID"
+                else f" (reasons: {printers['order'].get('reason')!r} / {scanners['order'].get('reason')!r}; 'insufficient stock' means the landscape's seeded stock is used up: see the runbook, O2C_DAILY_RESTOCK)"))
 
-    # 2 and 3: the events reach audit-ai; a large settlement is flagged
-    found = eventually(lambda: findings(s_sid), "audit-ai's finding for the scanners' settlement")
-    step("2 settlement's event reaches audit-ai", found[0]["settlement_id"] == s_sid,
-         f"{found[0]['event_type']}: {found[0]['verdict']}, risk {found[0]['risk_band']} ({DELIVERY})")
-    # the large payment goes from whichever of the two accounts holds more, so repeated runs move money back
-    # and forth instead of draining ACC-1000 (seeded with 1,000,000 EUR; each run used to take 150,000)
-    funds = balances()
-    payer, payee = ("ACC-1000", "ACC-2000") if funds["ACC-1000"] >= funds["ACC-2000"] else ("ACC-2000", "ACC-1000")
-    response = call("POST", f"{SETTLEMENT}/api/v1/settlements", headers={**system("SETTLEMENT"), "Idempotency-Key": f"scenario-big-{RUN}"},
-                    json={"payerAccount": payer, "payeeAccount": payee, "amount": 150000.00, "currency": "EUR"})
-    big = response.json()
-    if "settlementId" not in big or response.status_code != 201:
-        step("2b The large settlement is accepted by settlement-service", False,
-             f"HTTP {response.status_code} from {payer} -> {payee}: {response.text[:300]}")
-    flagged = eventually(lambda: [f for f in findings(big["settlementId"]) if f["verdict"] == "FLAGGED"],
-                         "audit-ai to flag the 150,000 EUR settlement")
-    step("3 audit-ai flags the large settlement", flagged[0]["rule_hits"][0]["rule"] == "large-amount",
-         f"{flagged[0]['verdict']}, risk {flagged[0]['risk_band']}: {flagged[0]['rule_hits'][0]['detail']}")
+        # 2 and 3: the events reach audit-ai; a large settlement is flagged
+        found = eventually(lambda: findings(s_sid), "audit-ai's finding for the scanners' settlement")
+        step("2 settlement's event reaches audit-ai", found[0]["settlement_id"] == s_sid,
+             f"{found[0]['event_type']}: {found[0]['verdict']}, risk {found[0]['risk_band']} ({DELIVERY})")
+        # the large payment goes from whichever of the two accounts holds more, so repeated runs move money back
+        # and forth instead of draining ACC-1000 (seeded with 1,000,000 EUR; each run used to take 150,000)
+        funds = balances()
+        payer, payee = ("ACC-1000", "ACC-2000") if funds["ACC-1000"] >= funds["ACC-2000"] else ("ACC-2000", "ACC-1000")
+        response = call("POST", f"{SETTLEMENT}/api/v1/settlements", headers={**system("SETTLEMENT"), "Idempotency-Key": f"scenario-big-{RUN}"},
+                        json={"payerAccount": payer, "payeeAccount": payee, "amount": 150000.00, "currency": "EUR"})
+        big = response.json()
+        if "settlementId" not in big or response.status_code != 201:
+            step("2b The large settlement is accepted by settlement-service", False,
+                 f"HTTP {response.status_code} from {payer} -> {payee}: {response.text[:300]}")
+        flagged = eventually(lambda: [f for f in findings(big["settlementId"]) if f["verdict"] == "FLAGGED"],
+                             "audit-ai to flag the 150,000 EUR settlement")
+        step("3 audit-ai flags the large settlement", flagged[0]["rule_hits"][0]["rule"] == "large-amount",
+             f"{flagged[0]['verdict']}, risk {flagged[0]['risk_band']}: {flagged[0]['rule_hits'][0]['detail']}")
 
-    # 4 a bank statement with a short payment
-    call("POST", f"{RECON}/api/v1/settlements/poll", headers=system("RECON"))
-    lines = [{"line_id": L1, "bank_txn_id": f"TXN-{RUN}-1", "value_date": TODAY, "amount": printers["order"]["amount"],
-              "currency": "EUR", "counterparty_account": "ACC-3000", "reference": p_sid},
-             {"line_id": L2, "bank_txn_id": f"TXN-{RUN}-2", "value_date": TODAY, "amount": str(Decimal(str(scanners["order"]["amount"])) - Decimal("2.50")),
-              "currency": "EUR", "counterparty_account": "ACC-3000", "reference": f"SCN-{RUN}"}]   # no settlement id: no exact match
-    results = call("POST", f"{RECON}/api/v1/statements", json=lines, headers=system("RECON")).json()["results"]
-    statuses = {r["line_id"]: r["status"] for r in results}
-    if "QUEUED" in statuses.values():            # deployed: the lines cross Pub/Sub; wait until each is decided
-        def decided():
-            now = {}
-            for line_id in statuses:
-                r = call("GET", f"{RECON}/service/v1/lines/{line_id}", headers=system("RECON"))
-                now[line_id] = r.json().get("status") if r.status_code == 200 else None
-            return now if all(v in ("MATCHED", "EXCEPTION") for v in now.values()) else None
-        statuses = eventually(decided, "reconciliation to decide both bank lines", 120)
-    step("4 The statement: one line matches, the short payment is an exception",
-         statuses == {L1: "MATCHED", L2: "EXCEPTION"}, json.dumps(statuses))
+        # 4 a bank statement with a short payment
+        call("POST", f"{RECON}/api/v1/settlements/poll", headers=system("RECON"))
+        lines = [{"line_id": L1, "bank_txn_id": f"TXN-{RUN}-1", "value_date": TODAY, "amount": printers["order"]["amount"],
+                  "currency": "EUR", "counterparty_account": "ACC-3000", "reference": p_sid},
+                 {"line_id": L2, "bank_txn_id": f"TXN-{RUN}-2", "value_date": TODAY, "amount": str(Decimal(str(scanners["order"]["amount"])) - Decimal("2.50")),
+                  "currency": "EUR", "counterparty_account": "ACC-3000", "reference": f"SCN-{RUN}"}]   # no settlement id: no exact match
+        results = call("POST", f"{RECON}/api/v1/statements", json=lines, headers=system("RECON")).json()["results"]
+        statuses = {r["line_id"]: r["status"] for r in results}
+        if "QUEUED" in statuses.values():            # deployed: the lines cross Pub/Sub; wait until each is decided
+            def decided():
+                now = {}
+                for line_id in statuses:
+                    r = call("GET", f"{RECON}/service/v1/lines/{line_id}", headers=system("RECON"))
+                    now[line_id] = r.json().get("status") if r.status_code == 200 else None
+                return now if all(v in ("MATCHED", "EXCEPTION") for v in now.values()) else None
+            statuses = eventually(decided, "reconciliation to decide both bank lines", 120)
+        step("4 The statement: one line matches, the short payment is an exception",
+             statuses == {L1: "MATCHED", L2: "EXCEPTION"}, json.dumps(statuses))
 
-    # 5 the assistant explains, citing what it read
-    explained = ask(f"Why is bank line {L2} unmatched?", ana)
-    cites, read = explained.get("citations", []), explained.get("records_read", [])
-    # what it READ is deterministic (every system of record); what the model CITES is its choice among those
-    step("5 The assistant explains the short payment, citing the records it read",
-         explained["status"] == "COMPLETED" and "2.50" in explained["answer"]
-         and {f"recon:{L2}", f"line:{L2}", f"settlement:{s_sid}"} <= set(read)
-         and any(c.startswith("audit:") for c in read)
-         and bool(cites) and set(cites) <= set(read) and bool(explained.get("verified")),
-         (explained.get("answer", "")[:160] + f" | read {len(read)} records, cited {sorted(cites)}") if read
-         else json.dumps(explained)[:400])
+        # 5 the assistant explains, citing what it read
+        explained = ask(f"Why is bank line {L2} unmatched?", ana)
+        cites, read = explained.get("citations", []), explained.get("records_read", [])
+        # what it READ is deterministic (every system of record); what the model CITES is its choice among those
+        step("5 The assistant explains the short payment, citing the records it read",
+             explained["status"] == "COMPLETED" and "2.50" in explained["answer"]
+             and {f"recon:{L2}", f"line:{L2}", f"settlement:{s_sid}"} <= set(read)
+             and any(c.startswith("audit:") for c in read)
+             and bool(cites) and set(cites) <= set(read) and bool(explained.get("verified")),
+             (explained.get("answer", "")[:160] + f" | read {len(read)} records, cited {sorted(cites)}") if read
+             else json.dumps(explained)[:400])
 
-    # 6 it proposes a write-off: nothing is posted yet
-    before = balances()
-    # the scanners' amount repeats across runs (20 quantities), so two settlements can fit the line equally:
-    # the investigator names the settlement, as a person would when asked which one
-    proposed = ask(f"Propose a write-off for bank line {L2} on settlement {s_sid}", ana)
-    step("6 It proposes a write-off of 2.50 EUR and waits for a second person",
-         proposed["status"] == "AWAITING_APPROVAL" and proposed["proposal"]["action"] == "WRITE_OFF"
-         and proposed["proposal"]["amount"] == "2.50" and proposed["proposal"]["settlement_id"] == s_sid
-         and not adjustments(s_sid), proposed["answer"][:240])
-    approval = proposed["approval_id"]
+        # 6 it proposes a write-off: nothing is posted yet
+        before = balances()
+        # the scanners' amount repeats across runs (20 quantities), so two settlements can fit the line equally:
+        # the investigator names the settlement, as a person would when asked which one
+        proposed = ask(f"Propose a write-off for bank line {L2} on settlement {s_sid}", ana)
+        step("6 It proposes a write-off of 2.50 EUR and waits for a second person",
+             proposed["status"] == "AWAITING_APPROVAL" and proposed["proposal"]["action"] == "WRITE_OFF"
+             and proposed["proposal"]["amount"] == "2.50" and proposed["proposal"]["settlement_id"] == s_sid
+             and not adjustments(s_sid), proposed["answer"][:240])
+        approval = proposed["approval_id"]
+        if PHASE == "propose":                      # the approval-recovery drill: stop here, the approval waits
+            print("DRILL_STATE " + json.dumps({"run": RUN, "approval": approval, "s_sid": s_sid,
+                                                "before": {k: str(v) for k, v in before.items()}}), flush=True)
+            print("phase propose: stopped before the approval; nothing is posted yet", flush=True)
+            finish(0)
+    else:                                           # phase approve: the second half, after the redeploy
+        saved = json.loads(os.environ["SCENARIO_STATE"])
+        assert saved["run"] == RUN, "SCENARIO_RUN must be the run id of the propose phase"
+        approval, s_sid = saved["approval"], saved["s_sid"]
+        before = {k: Decimal(v) for k, v in saved["before"].items()}
 
     # 7 four eyes
     if IDENTITY == "header" and not os.getenv("TOKEN_INVESTIGATOR"):
