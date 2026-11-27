@@ -112,7 +112,7 @@ def investigate_cites_what_it_read(landscape, assistant):
     if "12.50" not in str(answer.get("answer")):
         fails.append("the shortfall 12.50 is not stated")
     if answer.get("degraded"):
-        return False, ["answered by the deterministic fallback"], "fallback"
+        return False, [f"answered by the deterministic fallback: {why(state, answer)}"], "fallback"
     if landscape.posted():
         fails.append("something was posted by a question")
     return not fails, fails, "wrong-fact"
