@@ -129,7 +129,8 @@ class Landscape:
 
     def _handle(self, system: str, request: httpx.Request) -> httpx.Response:
         self.calls.append({"system": system, "method": request.method, "path": request.url.path,
-                           "tenant": request.headers.get("X-Tenant-Id"), "key": request.headers.get("Idempotency-Key")})
+                           "tenant": request.headers.get("X-Tenant-Id"), "key": request.headers.get("Idempotency-Key"),
+                           "correlation": request.headers.get("X-Correlation-Id")})
         injected = self._fault(system, request)
         if injected is not None:
             return injected

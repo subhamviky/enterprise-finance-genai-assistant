@@ -61,8 +61,10 @@ class HttpJsonTool(RestToolService):
         headers = {"X-Tenant-Id": kwargs["tenant_id"], **(kwargs.get("auth_headers") or {})}
         if kwargs.get("idempotency_key"):
             headers["Idempotency-Key"] = kwargs["idempotency_key"]
-        if kwargs.get("correlation_id"):
-            headers["X-Correlation-Id"] = kwargs["correlation_id"]
+        ctx = kwargs.get("ctx")                      # the request context io_read / io_modify pass to every tool
+        correlation_id = kwargs.get("correlation_id") or getattr(ctx, "correlation_id", None)
+        if correlation_id:
+            headers["X-Correlation-Id"] = correlation_id
         return headers
 
     async def _send_request(self, endpoint, body, token=None, timeout=None, config=None, **kwargs):

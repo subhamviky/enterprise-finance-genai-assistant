@@ -3,6 +3,7 @@ import logging
 
 from fastapi import FastAPI
 
+from . import correlation
 from .routers.api import router
 from .services.assistant import AssistantService
 
@@ -12,6 +13,7 @@ logger = logging.getLogger("genai_assistant_service")
 def build_app(assistant: AssistantService) -> FastAPI:
     app = FastAPI(title="genai-assistant-service")
     app.state.assistant = assistant
+    correlation.install(app, "genai-assistant-service")
     app.include_router(router)
 
     @app.get("/health")
