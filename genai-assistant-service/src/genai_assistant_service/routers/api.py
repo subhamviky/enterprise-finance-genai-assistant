@@ -34,7 +34,8 @@ def _call(fn, *args):
 
 @router.post("/ask")
 def ask(body: Ask, request: Request, who: Caller = Depends(caller), idempotency_key: Optional[str] = Header(None)):
-    return _call(_assistant(request).ask, body.text, who.tenant_id, who.user_id, who.role, idempotency_key)
+    return _call(_assistant(request).ask, body.text, who.tenant_id, who.user_id, who.role, idempotency_key,
+                 request.state.correlation_id)
 
 
 @router.get("/approvals")

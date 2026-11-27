@@ -63,3 +63,22 @@ def test_a_person_s_google_token_has_the_issuer_without_https(client):
     """gcloud auth print-identity-token for a person carries iss=accounts.google.com (live finding, GCP-01)."""
     body = {"text": "Why is bank line L-1001 unmatched?"}
     assert client.post("/api/v1/ask", json=body, headers=as_(ANA, iss="accounts.google.com")).status_code == 200
+
+
+# ---- GCP-02 Phase B: the caller's correlation id is kept, logged and followed through every call
+import logging  # noqa: E402
+
+
+def test_the_callers_id_is_returned_logged_and_sent_to_the_other_systems(client, landscape, caplog):
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        r = client.post("/api/v1/ask", headers={**as_(ANA), "X-Correlation-Id": "run-42"},
+                        json={"text": "Why is bank line L-1001 unmatched?"})
+    assert r.status_code == 200 and r.headers["X-Correlation-Id"] == "run-42" and r.json()["correlation_id"] == "run-42"
+    lines = [json.loads(rec.getMessage()) for rec in caplog.records if rec.name == "uvicorn.error"]
+    assert any(l["event"] == "http_request" and l["correlation_id"] == "run-42" and l["path"] == "/api/v1/ask" for l in lines)
+    assert landscape.calls and all(c["correlation"] == "run-42" for c in landscape.calls)
+
+
+def test_a_request_without_one_gets_one(client):
+    r = client.get("/health")
+    assert r.headers["X-Correlation-Id"]

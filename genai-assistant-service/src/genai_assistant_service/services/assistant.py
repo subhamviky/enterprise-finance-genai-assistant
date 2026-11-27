@@ -61,12 +61,14 @@ class AssistantService:
 
     # --------------------------------------------------------------------- capabilities
     def ask(self, text: str, tenant_id: str, user_id: str, role: str,
-            idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        return self.ask_traced(text, tenant_id, user_id, role, idempotency_key)[0]
+            idempotency_key: Optional[str] = None, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.ask_traced(text, tenant_id, user_id, role, idempotency_key, correlation_id)[0]
 
-    def ask_traced(self, text, tenant_id, user_id, role, idempotency_key=None):
+    def ask_traced(self, text, tenant_id, user_id, role, idempotency_key=None, correlation_id=None):
         """ask(), and the final state (steps, tools called, evaluation) the release gate scores."""
         state = {"tenant_id": tenant_id, "user_id": user_id, "role": role, "query": text}
+        if correlation_id:                       # the caller's id follows the request through every tool call
+            state["correlation_id"] = correlation_id
         result = self.validation.validate("IntentAgent", state, self.config)
         if not result["valid"]:
             if result.get("forbidden"):
