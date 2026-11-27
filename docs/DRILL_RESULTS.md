@@ -26,7 +26,18 @@ Two lessons recorded: (1) a test that consumes finite seeded resources (the ledg
 
 ## Drill 2: Pub/Sub delivery to audit-ai paused
 
-Not yet recorded.
+Run on 27 November 2026. The subscription `audit-settlement-events` was switched to pull-only (its push endpoint removed), the scenario was run while it was paused, then the push settings (endpoint, service account, audience) were restored and the scenario run again.
+
+| Measured | Result |
+|---|---|
+| Scenario while delivery was paused (run at 14:54 UTC, `scenario-03ed0c`) | **failed at step 2**: `timed out waiting for audit-ai's finding for the scanners' settlement`. Step 1 (the orders are paid) passed: settlement-service was not affected. |
+| What that proves | delivery had really stopped: the events were published and waiting in the subscription, and the audit service saw none of them |
+| Scenario after the restore (run at 15:00 UTC, `scenario-d2fc46`) | **passed all 14 steps**, including 9b: a redelivered settlement event adds no second finding |
+| Window | the paused run ended at about 14:56; the passing run started at 15:00, so delivery was restored within that interval |
+| Time from the restore to the first delivered push | not captured in this run (to be added from the Cloud Shell output) |
+| Repair needed | none: restoring the three push settings was the whole recovery |
+
+What this shows: the audit service has no state of its own that an interruption of the feed can corrupt. Events wait in Pub/Sub (kept 24 hours), and when delivery resumes they are audited once; the claim keyed on the event id means a redelivery is a no-op. The cost of an outage of the feed is delay, not loss.
 
 ## Drill 3: restore of the ledger backup
 
