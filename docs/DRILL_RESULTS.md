@@ -18,6 +18,12 @@ What this shows: settlement-service does not invent a result when its database i
 
 **An improvement it points at.** While the database was down, a request did not fail fast: it waited for the connection pool's 30-second timeout, so the health probe saw no answer at all (`000`) instead of a quick 503. For callers (the assistant, reconciliation) a quick, typed failure is easier to handle than a 30-second hang. The pool's `connectionTimeout` is the setting to shorten (for example to 5 s); the 30 s was never chosen for this case. Not changed yet: it needs a decision, since a shorter timeout also makes a slow start fail sooner.
 
+### What happened after drill 1: a different failure, found because of it
+
+The scenario failed again after the ledger had recovered. The correlation id (item 3 of this phase) made it diagnosable in minutes: settlement-service showed no errors after the outage, and O2C had answered 200 but refused both orders (`REFUSED`, no settlement id). Cause: O2C's seeded stock (50 printers, 200 scanners) was used up. Each scenario run buys goods and never returns them, and about 16 runs had been made that day. Not an effect of the drill, and not the circuit breaker first suspected. Fixed by a daily par-level top-up (`O2C_DAILY_RESTOCK`, off by default); `landscape-gcp` passes again with it on.
+
+Two lessons recorded: (1) a test that consumes finite seeded resources (the ledger account earlier, the stock now) will eventually fail for reasons unrelated to the code under test, so such a scenario needs a restock or a reset by design; (2) the run's correlation id turned "step 1 failed" into a diagnosis without logging in to any service.
+
 ## Drill 2: Pub/Sub delivery to audit-ai paused
 
 Not yet recorded.
