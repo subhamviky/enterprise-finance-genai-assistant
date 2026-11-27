@@ -16,9 +16,10 @@ WORKDIR /app
 RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r appgroup && useradd -r -g appgroup -u 1001 appuser
 COPY --from=builder /app/.venv /app/.venv
-# setuptools 70.3.0 comes with the virtualenv Poetry creates (CVE-2025-47273, fixed in 78.1.1): upgrade it in the venv
-# (the system Python of this base image has no setuptools); pip of the system installs into that venv
-RUN pip --python /app/.venv/bin/python install --no-cache-dir --upgrade "setuptools>=78.1.1"
+# The service never runs pip. The venv's pip vendors pkg_resources from setuptools 70.3.0 and ships a bill of
+# materials that lists it (CVE-2025-47273, fixed in 78.1.1), which the image scan reports: remove pip from the
+# runtime venv (the system pip of the base image does the uninstall)
+RUN pip --python /app/.venv/bin/python uninstall -y pip
 COPY src/ /app/src/
 COPY policies/ /app/policies/
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src"
