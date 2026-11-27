@@ -26,6 +26,7 @@ adjustments:
 approval:
   approver_role: finance-approver
   four_eyes: true
+  expires_after_hours: 24          # a proposal nobody decides in this time is EXPIRED: nothing is posted, ask again
 
 firewall:
   max_query_chars: 2000

@@ -82,3 +82,17 @@ def test_the_callers_id_is_returned_logged_and_sent_to_the_other_systems(client,
 def test_a_request_without_one_gets_one(client):
     r = client.get("/health")
     assert r.headers["X-Correlation-Id"]
+
+
+def test_an_expired_approval_is_410_gone_over_http(assistant, client, landscape):
+    """An approval nobody decided in 24 hours is gone: nothing is posted and the caller is told to ask again."""
+    from genai_assistant_service.services.stores import ApprovalStore
+    clock = {"now": 1_800_000_000.0}
+    assistant.approvals._clock = lambda: clock["now"]
+    proposed = client.post("/api/v1/ask", headers=as_(ANA), json={"text": "Propose a write-off for bank line L-1001"})
+    approval = proposed.json()["approval_id"]
+    clock["now"] += 25 * 3600
+    late = client.post(f"/api/v1/approvals/{approval}/approve", headers=as_(BO))
+    assert late.status_code == 410 and "make the request again" in late.json()["detail"]
+    assert landscape.posted() == []
+    assert client.get(f"/api/v1/approvals/{approval}", headers=as_(BO)).json()["status"] == "EXPIRED"
