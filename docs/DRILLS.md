@@ -88,29 +88,34 @@ If the dead-letter queue received anything (`gcloud pubsub subscriptions pull au
 
 **What it shows:** the daily `pg_dump` in Cloud Storage can actually be restored. A backup that was never restored is not a backup. The drill restores into a scratch database and never touches the live one.
 
+The database VM can **write** backups but not read them (`roles/storage.objectCreator` only, on purpose: a compromised database host cannot read or delete its own backups). So the restore is done by you: download the dump in Cloud Shell, check it is a whole gzip, and stream it into the VM over IAP.
+
 ```bash
-BUCKET=$PROJECT-ledger-backups
-gcloud compute ssh ledger-db --zone $ZONE --tunnel-through-iap --command 'sudo systemctl start ledger-backup.service; sleep 5; sudo systemctl is-failed ledger-backup.service || true'
-gcloud storage ls -l gs://$BUCKET | tail -3                              # a fresh settlement-<time>.sql.gz
-LATEST=$(gcloud storage ls gs://$BUCKET | sort | tail -1 | sed "s#gs://$BUCKET/##")
-echo "restoring $LATEST"
-gcloud compute ssh ledger-db --zone $ZONE --tunnel-through-iap --command "
-  set -e
-  sudo docker exec ledger-db psql -U settlement -d postgres -c 'drop database if exists restore_test' -c 'create database restore_test'
-  curl -sf -H \"Authorization: Bearer \$(/bin/bash /var/lib/ledger/token.sh)\" \
-    'https://storage.googleapis.com/storage/v1/b/$BUCKET/o/$LATEST?alt=media' | gunzip | sudo docker exec -i ledger-db psql -q -U settlement -d restore_test >/dev/null
-  echo 'live:    ' \$(sudo docker exec ledger-db psql -At -U settlement -d settlement -c 'select count(*) from settlement')' settlements'
-  echo 'restored:' \$(sudo docker exec ledger-db psql -At -U settlement -d restore_test -c 'select count(*) from settlement')' settlements'
-  sudo docker exec ledger-db psql -U settlement -d postgres -c 'drop database restore_test'"
+PROJECT=finance-ai-landscape-123456; ZONE=us-central1-a; BUCKET=$PROJECT-ledger-backups
+VM="gcloud compute ssh ledger-db --zone $ZONE --tunnel-through-iap --command"
+$VM 'sudo systemctl start ledger-backup.service; sleep 5; sudo systemctl is-failed ledger-backup.service || true'   # inactive = it ran and finished
+LATEST=$(gcloud storage ls gs://$BUCKET | sort | tail -1 | sed "s#gs://$BUCKET/##"); echo "restoring $LATEST"
+gcloud storage cp gs://$BUCKET/$LATEST /tmp/ledger.sql.gz && ls -l /tmp/ledger.sql.gz
+gunzip -t /tmp/ledger.sql.gz && echo "the dump is a whole, valid gzip"
+time {
+  $VM "sudo docker exec ledger-db psql -U settlement -d postgres -c 'drop database if exists restore_test' -c 'create database restore_test'"
+  gunzip -c /tmp/ledger.sql.gz | $VM "sudo docker exec -i ledger-db psql -q -U settlement -d restore_test >/dev/null"
+  $VM "echo live:     \$(sudo docker exec ledger-db psql -At -U settlement -d settlement -c 'select count(*) from settlement') settlements; echo restored: \$(sudo docker exec ledger-db psql -At -U settlement -d restore_test -c 'select count(*) from settlement') settlements"
+  $VM "sudo docker exec ledger-db psql -U settlement -d postgres -c 'drop database restore_test'"
+}
+rm -f /tmp/ledger.sql.gz
 ```
 
-The two counts should be equal (or the restored one smaller only by settlements made after the backup ran).
+The two counts should be equal (or the restored one smaller only by settlements made after that backup ran).
 
 | Recorded | Value |
 |---|---|
-| Backup object | |
+| Backup object and size | |
+| `gunzip -t` | valid / not |
 | Settlements live / restored | |
 | Seconds for the restore | |
+
+**What the first attempt taught (27 November 2026):** run from the VM, the restore failed with `gzip: unexpected end of file` and an empty scratch database. The cause was not the backup: the VM's account cannot read the bucket (by design), the download got a 403 that `curl -sf` hid, and `gunzip` was handed nothing. A drill that fails for a reason of its own design is still useful: it proved the write-only backup account, and the drill now restores the way an operator would.
 
 ---
 
