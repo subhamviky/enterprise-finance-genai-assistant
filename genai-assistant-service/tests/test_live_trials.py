@@ -19,3 +19,15 @@ def test_the_scorers_notice_a_wrong_fact():
     landscape._resolve = lambda *a, **k: __import__("httpx").Response(503, json={})       # reconciliation down
     ok, fails, kind = trials.approve_posts_once_and_closes(landscape, assistant)
     assert not ok and "the exception was not closed" in fails and kind == "wrong-fact"
+
+
+def test_a_trial_whose_model_calls_failed_is_not_a_pass():
+    import logging
+    errors = trials.ModelErrors()
+    logging.getLogger().addHandler(errors)
+    try:
+        logging.getLogger().warning("[IntentAgent] model unavailable, rules used: LLM inference failed: 400 INVALID_ARGUMENT")
+        logging.getLogger().warning("[IntentAgent] model unavailable, rules used: request refused by the semantic firewall")
+    finally:
+        logging.getLogger().removeHandler(errors)
+    assert errors.count == 1          # the firewall's refusal is a decision, not a model failure
