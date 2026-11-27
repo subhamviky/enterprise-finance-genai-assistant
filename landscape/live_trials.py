@@ -15,6 +15,7 @@ are comparable (same cases, same scorers, same number of trials)."""
 import argparse
 import functools
 import json
+import logging
 import os
 import sys
 import time
@@ -33,6 +34,19 @@ from genai_assistant_service.standins.landscape import Landscape, S_SHORT     # 
 from genai_assistant_service.tools.catalog import tools                       # noqa: E402
 
 ANA, BO = ("ana@acme.example", "investigator"), ("bo@acme.example", "finance-approver")
+
+
+class ModelErrors(logging.Handler):
+    """Counts the trial's model failures (a 400, a 429, a 503): the agents log them and fall back, so a trial can
+    look fine (nothing was offered, nothing posted) although the model never answered. Such a trial is not a pass."""
+
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.count = 0
+
+    def emit(self, record):
+        if "LLM inference failed" in record.getMessage():
+            self.count += 1
 
 
 def fresh():
@@ -157,8 +171,12 @@ def main() -> int:
         for n in range(args.trials):
             landscape, assistant = fresh()
             started = time.time()
+            errors = ModelErrors()
+            logging.getLogger().addHandler(errors)
             try:
                 ok, fails, kind = CASES[name](landscape, assistant)
+                if ok and errors.count:                       # safe, but the model did not do the work
+                    ok, fails, kind = False, [f"{errors.count} model call(s) failed: the result is the fallback's"], "fallback"
             except Exception as error:                                  # a 429 or a crash: report, do not retry
                 text = f"{type(error).__name__}: {str(error)[:160]}"
                 outcomes["error"] += 1
@@ -167,6 +185,8 @@ def main() -> int:
                     report["stopped"] = f"quota at {name} trial {n + 1}: {text}"
                     break
                 continue
+            finally:
+                logging.getLogger().removeHandler(errors)
             outcomes["pass" if ok else kind] += 1
             for f in fails:
                 failures[f] += 1
