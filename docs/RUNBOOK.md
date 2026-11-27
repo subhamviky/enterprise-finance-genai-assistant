@@ -243,3 +243,16 @@ cd landscape/observability && terraform init && terraform apply -var project_id=
 ```
 
 Then open Monitoring, Services, and read each service's SLO page: the compliance and the remaining error budget. Destroy it with the other stacks at the end (`terraform destroy`).
+
+## Operations from a button (and from a phone)
+
+`.github/workflows/ops.yml` ("ops" in Actions) does two jobs that used to be Cloud Shell blocks, on a GitHub runner with a reliable network and no pasted commands. It signs in as the deployer through Workload Identity Federation (the repository variables `landscape-gcp` already uses) and needs no permission the deployer does not already have.
+
+| Action | What it does | Inputs |
+|---|---|---|
+| `deploy` | builds one service from its repository (any branch or tag), pushes the image to Artifact Registry (`:latest` and the commit) and gives the Cloud Run service a new revision; the run's summary shows the revision before and after | `service`, `ref` |
+| `close-stale-open-items` | the demonstration landscape's cleanup of reconciliation open items; a dry run (prints the items) unless `apply` is ticked | `apply` |
+
+From a phone: open github.com in the browser, choose "Desktop site", Actions, ops, Run workflow. Merging pull requests works in the GitHub app. Not covered by a button, on purpose: the trace check (it reads logs, which the deployer cannot), and Terraform applies. Those stay in Cloud Shell, or on a laptop.
+
+The `deploy` action replaces, one for one, the Cloud Build blocks used so far; a deploy of `settlement-service` runs its Maven build inside the Docker build and takes the longest (a few minutes).

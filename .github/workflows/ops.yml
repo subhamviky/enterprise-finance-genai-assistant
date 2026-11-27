@@ -1,0 +1,119 @@
+# Operations from a button, usable from a phone (Actions, ops, Run workflow in a browser's desktop view):
+#
+#   deploy                 build one service from its repository, push the image to Artifact Registry and give the
+#                          Cloud Run service a new revision. The same thing the Cloud Build and Cloud Shell blocks of
+#                          the runbook did, on a GitHub runner whose network is reliable.
+#   close-stale-open-items the demonstration landscape's one-time cleanup of reconciliation open items
+#                          (landscape/close_stale_open_items.py). A dry run unless "apply" is ticked.
+#
+# It signs in as the landscape's deployer through Workload Identity Federation (no key), like landscape-gcp, and needs
+# no permission the deployer does not already have (run.admin, artifactregistry.writer, datastore.owner).
+# Not here on purpose: the trace check (it reads logs, which the deployer cannot) and Terraform applies.
+name: ops
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy, or close-stale-open-items"
+        type: choice
+        options: [deploy, close-stale-open-items]
+        default: deploy
+      service:
+        description: "deploy: the Cloud Run service to rebuild and redeploy"
+        type: choice
+        options: [genai-assistant-service, reconciliation-service, audit-ai-service, o2c-agent-service-dev, settlement-service]
+        default: genai-assistant-service
+      ref:
+        description: "deploy: branch or tag of that service's repository"
+        default: "main"
+      apply:
+        description: "close-stale-open-items: tick to change the items; unticked prints what it would change"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      REGION: us-central1
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      REF: ${{ inputs.ref }}
+    steps:
+      - name: Which repository, folder and image
+        id: svc
+        run: |
+          case "${{ inputs.service }}" in
+            genai-assistant-service)  repo=enterprise-finance-genai-assistant; dir=genai-assistant-service; image=genai-assistant-service; args="--build-arg POETRY_EXTRAS=gemini" ;;
+            reconciliation-service)   repo=payment-reconciliation-engine;      dir=reconciliation-service;  image=reconciliation-service;  args="--build-arg POETRY_EXTRAS=gemini" ;;
+            audit-ai-service)         repo=financial-settlement-platform;      dir=audit-ai-service;        image=audit-ai-service;        args="--build-arg POETRY_EXTRAS=gemini" ;;
+            o2c-agent-service-dev)    repo=order-to-cash-agentic-ai;           dir=o2c-agent-service;       image=o2c-agent-service;       args="--build-arg POETRY_EXTRAS=gemini" ;;
+            settlement-service)       repo=financial-settlement-platform;      dir=settlement-service;      image=settlement-service;      args="" ;;
+          esac
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"; echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"; echo "args=$args" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          repository: subhamviky/${{ steps.svc.outputs.repo }}
+          ref: ${{ inputs.ref }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/landscape/${{ steps.svc.outputs.image }}"
+          SHA="$(git rev-parse --short=12 HEAD)"      # the commit of the repository being built, not of this one
+          docker build -t "$IMAGE:latest" -t "$IMAGE:$SHA" ${{ steps.svc.outputs.args }} "${{ steps.svc.outputs.dir }}"
+          docker push --all-tags "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Give the Cloud Run service a new revision
+        run: |
+          before="$(gcloud run services describe "${{ inputs.service }}" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
+          gcloud run services update "${{ inputs.service }}" --region "$REGION" --image "$IMAGE:latest" --quiet
+          after="$(gcloud run services describe "${{ inputs.service }}" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
+          echo "revision: $before -> $after"
+          {
+            echo "### Deployed ${{ inputs.service }}"
+            echo "| | |"; echo "|---|---|"
+            echo "| from | \`${{ steps.svc.outputs.repo }}\` at \`$REF\` |"
+            echo "| image | \`$IMAGE:latest\` |"
+            echo "| revision | \`$before\` to \`$after\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  close-stale-open-items:
+    if: inputs.action == 'close-stale-open-items'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet google-cloud-firestore
+      - name: Close the stale open items (dry run unless "apply" is ticked)
+        run: |
+          python landscape/close_stale_open_items.py --project "$GOOGLE_CLOUD_PROJECT" ${{ inputs.apply && '--apply' || '' }} | tee out.txt
+          { echo "### close-stale-open-items (${{ inputs.apply && 'applied' || 'dry run' }})"; echo '```'; head -60 out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
