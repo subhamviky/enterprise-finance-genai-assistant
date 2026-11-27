@@ -307,3 +307,15 @@ def test_two_equally_fitting_settlements_are_not_guessed_and_a_named_one_is_hono
     assert "names settlement S-A" in check(proposal, both["S-B"], line, case, named="S-A", settlements=both)
     only_one = {"S-A": both["S-A"], "S-B": {"amount": "1400.00", "status": "COMPLETED"}}
     assert check({**proposal, "settlement_id": "S-A"}, both["S-A"], line, case, settlements=only_one) is None
+
+
+def test_the_proposal_prompt_tells_the_model_which_settlement_was_named():
+    """A live model picked another settlement of the same amount although the request named one."""
+    from genai_assistant_service.agents.proposal_agent import ProposalAgent
+    agent = ProposalAgent()
+    named = agent._build_messages({"query": "Propose a write-off for bank line L-1 on settlement S-9",
+                                   "settlement_id": "S-9", "evidence": []}, None)
+    assert "names settlement S-9: draft for that settlement only" in named[1]["content"]
+    assert "draft for that settlement only" in named[0]["content"]
+    plain = agent._build_messages({"query": "Propose a write-off for bank line L-1", "evidence": []}, None)
+    assert "names settlement" not in plain[1]["content"]
