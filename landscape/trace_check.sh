@@ -8,7 +8,7 @@ ID="${1:?usage: trace_check.sh CORRELATION_ID [PROJECT_ID] [FRESHNESS]}"
 PROJECT="${2:-$(gcloud config get-value project 2>/dev/null)}"
 FRESH="${3:-2h}"
 missing=0
-for service in o2c-agent-service settlement-service audit-ai-service reconciliation-service genai-assistant-service; do
+for service in o2c-agent-service-dev settlement-service audit-ai-service reconciliation-service genai-assistant-service; do
   n=$(gcloud logging read "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$service\" AND (jsonPayload.correlation_id=\"$ID\" OR textPayload:\"$ID\" OR jsonPayload.message:\"$ID\")" \
         --project "$PROJECT" --freshness "$FRESH" --limit 200 --format='value(timestamp)' 2>/dev/null | wc -l)
   printf '%-28s %s entries\n' "$service" "$n"
