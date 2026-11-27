@@ -229,3 +229,7 @@ The scenario sends one `X-Correlation-Id` (`scenario-<run>`) on every call and p
 ```
 
 It counts the entries in each of the five services' logs; every service should show at least one. The traces in Cloud Trace need the OpenTelemetry exporter, which is a later step of Phase B.
+
+## The scenario buys goods: stock (and the ledger) are finite
+
+Each scenario run buys 3 printers and 2 to 21 scanners from O2C, whose stock is seeded once (50 printers, 200 scanners), and moves 150,000 EUR between two ledger accounts. After about 16 runs the printers are gone and step 1 fails with orders `REFUSED` ("insufficient stock"; the step prints the reason). For this landscape, set `daily_restock = true` in the O2C stack (Terraform variable; it sets `O2C_DAILY_RESTOCK=true`): each SKU is topped up to its catalog level once a day. Until the stack is applied, the same effect with no Terraform: `gcloud run services update o2c-agent-service-dev --region us-central1 --update-env-vars O2C_DAILY_RESTOCK=true` (a new revision starts and tops the stock up). Where stock is real, leave it off.
