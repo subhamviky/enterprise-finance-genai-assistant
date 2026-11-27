@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [genai-assistant-service/infra, landscape/foundation]   # the assistant, the landscape's foundation
+        stack: [genai-assistant-service/infra, landscape/foundation, landscape/observability]   # the assistant, the foundation, the SLOs
     defaults:
       run:
         working-directory: ${{ matrix.stack }}
