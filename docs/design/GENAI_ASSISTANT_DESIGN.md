@@ -281,7 +281,11 @@ The request passes validation and the governance stages; `IntentAgent` names the
 
 ### 9.3 States of an approval
 
-PENDING, then APPROVED or REJECTED, once. A concurrent second decision is refused.
+PENDING, then APPROVED, REJECTED or EXPIRED, once. A concurrent second decision is refused.
+
+**Expiry.** A proposal nobody decides within `approval.expires_after_hours` (24 in `policies/governance.yaml`) becomes EXPIRED. There is no timer: the approval store expires a due PENDING approval the next time anyone reads or decides it, as one compare-and-set, so every instance agrees and a decision taken in time is never expired afterwards. An expired approval cannot be approved: the API answers 410 Gone with "make the request again", nothing is posted, and the same request made again produces a new proposal with a new approval id.
+
+**Restart and redeploy.** The state is in the store (Firestore on Google Cloud), not in the service, so a new instance or a new Cloud Run revision picks up every pending approval. Tested with a second `AssistantService` on the same state: an approval proposed before the "restart" is approved after it and posts once; two instances deciding at the same time post once; a rejection is not reversed by a restart. The live version is drill 4 in `docs/DRILLS.md`: redeploy the assistant between the proposal and the approval of a real scenario run.
 
 ## 10. Consistency, Concurrency and Failures
 

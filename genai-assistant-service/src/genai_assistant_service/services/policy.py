@@ -18,6 +18,7 @@ class Policy:
         self.limits: Dict[str, Decimal] = {k: Decimal(v["max_amount"]) for k, v in data["adjustments"].items()}
         self.approver_role: str = data["approval"]["approver_role"]
         self.four_eyes: bool = bool(data["approval"]["four_eyes"])
+        self.approval_ttl_seconds: int = int(float(data["approval"].get("expires_after_hours", 24)) * 3600)
         self.injection_patterns: List[str] = data["firewall"]["injection_patterns"]
         self.max_query_chars = int(data["firewall"]["max_query_chars"])
         self.redaction = compile_redactions(data["redaction"])

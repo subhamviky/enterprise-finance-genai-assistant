@@ -119,6 +119,35 @@ The two counts should be equal (or the restored one smaller only by settlements 
 
 ---
 
-## Not yet automated: redeploy during an approval
+## Drill 4: redeploy the assistant while an approval waits
 
-A proposal waits for a second person; its state lives in Firestore, not in the service. The claim is that a new revision of the assistant, deployed while a proposal waits, loses nothing: the approval can still be decided and posts once. The scenario cannot show this on its own (it runs start to finish in two minutes); it needs the scenario split in two halves around a redeploy. That is the next piece of Phase B.
+**What it shows:** the state of a proposal is in Firestore, not in the service. A new Cloud Run revision deployed between the proposal and the approval must not lose it, and the approval must still post exactly once.
+
+The scenario runs in two halves for this drill (`phase` input of the `landscape-gcp` workflow). In the assistant repository, Actions, `landscape-gcp`, Run workflow:
+
+1. **Target `cloud`, phase `propose`.** It runs steps 1 to 6 (an order, the short payment, the cited explanation, the proposal) and stops with the approval waiting. In its log find the line `DRILL_STATE {...}`: copy the whole JSON (it carries the run id and the approval id).
+2. **Redeploy the assistant** (Cloud Shell). The environment variable only forces a new revision; the code is unchanged:
+```bash
+REGION=us-central1
+gcloud run services describe genai-assistant-service --region $REGION --format='value(status.latestReadyRevisionName)'    # before
+gcloud run services update genai-assistant-service --region $REGION --update-env-vars DRILL_REDEPLOY=$(date +%s) --quiet
+gcloud run services describe genai-assistant-service --region $REGION --format='value(status.latestReadyRevisionName)'    # after: a new number
+```
+3. **Target `cloud`, phase `approve`**, with `run` = the run id inside `DRILL_STATE` and `state` = the whole `DRILL_STATE` JSON. It runs steps 7 to 10: an investigator cannot approve, a second person approves and the write-off is posted and read back, the ledger holds one balanced write-off, the exception is RESOLVED, replays post nothing twice.
+
+Expected: every step of the second half passes against the new revision.
+
+| Recorded | Value |
+|---|---|
+| Revision before / after | |
+| Minutes the approval waited | |
+| Steps 7 to 10 on the new revision | pass / fail |
+| Adjustments for the settlement | 1 |
+
+Also try, once, the expiry (it needs no new revision): run the propose phase, wait more than 24 hours (or set `expires_after_hours` low on a test revision), and approve: the answer must be 410 and nothing posted. The same behaviour is tested in CI with a clock (`tests/test_approval_recovery.py`).
+
+---
+
+## Drills 5 and onward: run in CI on every change
+
+The failure-injection matrix (`tests/test_failure_matrix.py`) is a set of drills that run against the stand-ins on every commit: the model unavailable (429 or 503) degrades to the verified facts; a replayed approval posts nothing twice; concurrent approvals post once; a settlement outage leaves nothing posted; a reconciliation outage leaves the exception open but keeps the posting. With drills 1 to 4 in the cloud they make the "at least five drills, three in the cloud" criterion of the plan.

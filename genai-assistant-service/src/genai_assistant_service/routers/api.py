@@ -5,7 +5,7 @@ from e2a import NFRViolationError
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ..services.assistant import Forbidden, NotFound
+from ..services.assistant import Expired, Forbidden, NotFound
 from .identity import Caller, caller
 
 router = APIRouter(prefix="/api/v1")
@@ -26,6 +26,8 @@ def _call(fn, *args):
         raise HTTPException(status_code=403, detail=str(e))
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Expired as e:
+        raise HTTPException(status_code=410, detail=str(e))
     except NFRViolationError as e:                        # capacity or quota: shed load, retry later
         raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:

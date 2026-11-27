@@ -35,16 +35,21 @@ class NotFound(Exception):
     """No such approval for this tenant (HTTP 404)."""
 
 
+class Expired(Exception):
+    """The approval was not decided in time and nothing was posted; ask again (HTTP 410)."""
+
+
 class AssistantService:
     def __init__(self, tools: Optional[Dict[str, Any]] = None, llm=None, state=None, policy: Policy = None,
-                 config: Optional[Dict] = None) -> None:
+                 config: Optional[Dict] = None, clock=None) -> None:
+        import time
         from e2a import bindings_from_profile
         from e2a_adapters.workload import workload_credentials
         self.policy = policy or Policy()
         self.governance = ServiceGovernance(self.policy)
         self.validation = ServiceValidation(self.policy)
         rows, claims = state or state_ports()
-        self.approvals = ApprovalStore(rows)
+        self.approvals = ApprovalStore(rows, self.policy.approval_ttl_seconds, clock or time.time)
         bindings = bindings_from_profile(resolve_config("provider_profile", {}) or DEFAULT_PROFILE, verify=True)
         self.llm = llm or bindings.llm_service
         if llm is None and bindings.profile.name == "simulated":
@@ -98,6 +103,10 @@ class AssistantService:
         except ResumeRefused as refused:
             if refused.code == "UNKNOWN_CHECKPOINT":
                 raise NotFound(f"approval {approval_id}") from refused
+            current = self.approvals.get(tenant_id, approval_id)
+            if current is not None and current["status"] == "EXPIRED":
+                raise Expired(f"approval {approval_id} expired: it was not decided in time, nothing was posted; "
+                              "make the request again") from refused
             raise Forbidden(refused.reason) from refused
 
     def _answer(self, state, status, text, **fields) -> Dict[str, Any]:
