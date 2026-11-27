@@ -228,8 +228,17 @@ def main() -> None:
             print("phase propose: stopped before the approval; nothing is posted yet", flush=True)
             finish(0)
     else:                                           # phase approve: the second half, after the redeploy
-        saved = json.loads(os.environ["SCENARIO_STATE"])
-        assert saved["run"] == RUN, "SCENARIO_RUN must be the run id of the propose phase"
+        raw = os.environ.get("SCENARIO_STATE", "").strip()
+        if "{" not in raw:
+            sys.exit("phase approve needs the `state` input: the DRILL_STATE json printed by the propose phase "
+                     "(the text from the first { to the last }); it was empty or had no json")
+        try:                                           # the whole log line may have been pasted: take the json in it
+            saved = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        except ValueError as error:
+            sys.exit(f"phase approve: the `state` input is not valid json ({error}); paste the DRILL_STATE line as printed")
+        if saved["run"] != RUN:
+            sys.exit(f"phase approve: the `run` input is {RUN!r} but the state belongs to run {saved['run']!r}; "
+                     f"set `run` to {saved['run']!r}")
         approval, s_sid = saved["approval"], saved["s_sid"]
         before = {k: Decimal(v) for k, v in saved["before"].items()}
 
