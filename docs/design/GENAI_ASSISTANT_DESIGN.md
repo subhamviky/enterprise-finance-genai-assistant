@@ -211,6 +211,8 @@ Every call carries `X-Tenant-Id` and, when configured, the service's own Google 
 
 The model is reached only through `config['llm_service']`, bound from `E2A_PROVIDER_PROFILE`. The `simulated` profile (the default) answers with the rules in `services/simulated.py`, so CI and local runs need no account. The `gemini_api` profile adds the Gemini client (`poetry install --extras gemini`, or the image built with `POETRY_EXTRAS=gemini`) and E2A's per-minute and per-day limits. The agents' checks are the same for both: a model answer is accepted only if it passes them. Live findings shaped three rules: the model's JSON is read from inside a markdown code fence or a sentence, because Gemini wraps it; an unreadable *intent* reply is read with the rules and the investigation continues (a model fallback ends a workflow, which would turn a valid request into "no record was found"); and each model call is bounded (`LLM_SDK_TIMEOUT` 12 seconds, `LLM_SDK_MAX_RETRIES` 1), so a busy free-tier model degrades the answer to the verified facts instead of making the caller wait a minute. The answer lists `records_read`, the records the evidence step read, next to the `citations` the model chose among them.
 
+*Promotion (Phase C).* The `promote` workflow ships a new revision in steps: a revision with no traffic on its own tag URL, a 10 % canary, the 14-step scenario against the candidate, 100 %, the scenario again through the service URL; if a gate fails after traffic moved, the previous revision is restored automatically, and a deliberately broken candidate (the `break` input) demonstrates it. Tokens for the gate are minted for the service URL and are accepted on the tag URL. `ops deploy` bypasses the canary and is for rebuilding, not for changes that matter. The operations stack adds an availability SLO per service, latency SLOs where no model is in the path, burn-rate alerts, and two log-based metrics from the assistant's one JSON line per answer (`assistant_answers` by status, intent and degraded; `assistant_tokens`).
+
 ## 6. Data Design
 
 | Record | Key | Content | Written by |
@@ -220,6 +222,8 @@ The model is reached only through `config['llm_service']`, bound from `E2A_PROVI
 | Receipt | `receipt:<tenant>:<id>` | outcome, status, adjustment id, whether the ledger showed it, approver, idempotency key | `ApprovalStore.record_receipt`, written once |
 | Idempotency claim | E2A's claim record | the key, its state and result | E2A `BaseWorkflow` |
 
+**Documents (Phase C).** The customer's synthetic policy documents are markdown files shipped with the policies, `policies/documents/*.md` (shared) and `policies/documents/<tenant>/*.md` (that tenant's own; never visible to another tenant). Each `##` section is a passage, ranked by BM25 over its words (no embeddings, no model, no network: deterministic and free) and returned as an evidence item the answer must cite like any other record. The documents' stated limits, currencies and expiry are compared with the enforced policy in CI, so a document cannot silently disagree with the rules. The seam for a vector store is `DocumentStore.search`.
+
 The records live in the transactional store behind `state_ports()`: in memory (`GENAI_STATE_BACKEND=memory`, tests and local runs) or Firestore (`firestore`, collection `GENAI_FIRESTORE_COLLECTION`, default `genai`). The data is synthetic.
 
 ## 7. Low-Level Design — Module Structure
@@ -228,7 +232,8 @@ The records live in the transactional store behind `state_ports()`: in memory (`
 |---|---|---|
 | `agents/` | `intent_agent`, `evidence_agent`, `investigator_agent`, `proposal_agent`, `execution_agent` and the generated `*_output` models | the five agents |
 | `workflow/` | `investigation_workflow` | steps, idempotency key, who may decide |
-| `services/` | `assistant` (composition root), `policy`, `governance`, `validation`, `evidence`, `stores`, `state`, `bindings`, `simulated` | the capabilities and their data |
+| `services/` | `assistant` (composition root), `policy`, `governance`, `validation`, `evidence`, `documents`, `stores`, `state`, `bindings`, `simulated` | the capabilities and their data |
+| `correlation` | `install` | the correlation-id middleware and the one JSON log line per request |
 | `tools/` | `catalog` | the six HTTP tools |
 | `routers/` | `api`, `identity` | HTTP and the caller |
 | `release/` | `gate` | the release gate's `_run_case` |
@@ -240,12 +245,12 @@ The records live in the transactional store behind `state_ports()`: in memory (`
 
 | Class | Contract |
 |---|---|
-| `IntentAgent` | model output must match `IntentAgentOutput`; a returned identifier is kept only if the request contains it; an intent without an identifier becomes UNSUPPORTED; on a model error or invalid answer, `rule_intent` classifies (degraded) |
-| `EvidenceAgent` | `_prepare` reads through `io_read` only; each fact becomes an evidence item `kind:key` (`recon`, `line`, `order`, `settlement`, `event`, `audit`); up to three settlements are followed; a system that does not answer is a gap; the line item states the difference to the nearest open item, computed from the two records |
+| `IntentAgent` | a request that names a record and says plainly what it wants is read by `sure_intent` (rules) and makes **no model call** (`GENAI_INTENT_BY_RULES=false` turns this off); otherwise the model output must match `IntentAgentOutput`; a returned identifier is kept only if the request contains it; an INVESTIGATE, EXPLAIN or PROPOSE intent without an identifier becomes UNSUPPORTED; a question about rules naming no record is POLICY; on a model error or invalid answer, `rule_intent` classifies (degraded) |
+| `EvidenceAgent` | for the intent POLICY it searches the customer's documents (`services/documents`, passages as evidence items `doc:<scope>/<file>#<section>`); otherwise `_prepare` reads through `io_read` only; each fact becomes an evidence item `kind:key` (`recon`, `line`, `order`, `settlement`, `event`, `audit`); up to three settlements are followed; a system that does not answer is a gap; the line item states the difference to the nearest open item, computed from the two records |
 | `InvestigatorAgent` | accepted only if the JSON matches `InvestigatorAgentOutput`, at least one citation is given, every citation is an evidence id, and every id, amount and status word in the answer or `verified` occurs in the evidence the model saw; otherwise the fallback answers with the facts |
 | `ProposalAgent` | accepted only if the JSON matches `ProposalAgentOutput` and `Policy.check_proposal` returns no reason; the fallback is action NONE |
 | `ExecutionAgent` | `_prepare` re-reads the settlement; `_act` posts only if it is still COMPLETED, with the workflow's idempotency key; the receipt is kept in the state |
-| `InvestigationWorkflow` | steps route, gather, reason (by intent), execute (when the proposal is actionable, material); the idempotency claim is taken only for an actionable proposal; the key is a hash of tenant, user and proposal; `_authorize_decision` requires the approver role and, with four eyes, a decider other than the requester |
+| `InvestigationWorkflow` | steps route, gather, reason (by intent: INVESTIGATE, EXPLAIN and POLICY go to the InvestigatorAgent, PROPOSE to the ProposalAgent), execute (when the proposal is actionable, material); the idempotency claim is taken only for an actionable proposal; the key is a hash of tenant, user and proposal; `_authorize_decision` requires the approver role and, with four eyes, a decider other than the requester |
 
 ### 8.2 Tools
 
@@ -340,13 +345,15 @@ Capacity was global (8 requests in flight for the instance), so one busy tenant 
 | `E2A_IDENTITY_SOURCE=gcp_cloud_run`, `E2A_IDENTITY_TRUSTED_ISSUERS`, `E2A_IDENTITY_SUBJECT_ROLES` | who may call and what each may do |
 | `E2A_WORKLOAD_IDENTITY=gcp_id_token` | the service's own token to the four systems |
 | `RECONCILIATION_API_URL`, `SETTLEMENT_API_URL`, `O2C_API_URL`, `AUDIT_API_URL` | the four systems |
-| `policies/governance.yaml` | limits, entitlements, firewall, redaction, capacity |
+| `policies/governance.yaml`, `policies/customers/<tenant>.yaml` | limits, entitlements, firewall, redaction, capacity; the customer's overrides |
+| `GENAI_INTENT_BY_RULES` | `true` (default): a plain request's intent is read by rules, no model call; `false` asks the model (for comparison) |
+| `GENAI_DOCUMENTS_DIR` | where the policy documents are (default `policies/documents`) |
 
 ## 13. Verification
 
 ### 13.1 Tests
 
-71 tests in 9 modules: the journeys; the failure matrix (17: with the fenced and unreadable model replies and the wording-independent claim); safety (8: injection, limits, invented identifiers, entitlements, redaction); the HTTP API with Cloud Run identity (4); the converter of the placeholder files (6); and the generated contract, conformance and workflow tests.
+176 tests in 19 modules: the journeys; the failure matrix (with the fenced and unreadable model replies and the wording-independent claim); safety (injection, limits, invented identifiers, entitlements, redaction); **adversarial** (45 cases: injection phrasings, oversize and malformed input, a model that drafts hostile adjustments, instructions hidden in records and documents, hostile callers; it found a real firewall gap, `ignore   the above instructions`); the HTTP API with Cloud Run identity, expiry (410) and correlation ids; approval recovery with a clock; customers (the policy book and six journeys with two simulated customers); tenant isolation (24 tenants, and a noisy-neighbour test with an async gate); intent by rules; the customer's documents (ranking, tenant scoping, limits agreeing with the policy, a poisoned document, a model stating a figure the documents lack); live-trial scorers; the converter of the placeholder files; and the generated contract, conformance and workflow tests.
 
 ### 13.2 Evaluation sets
 
@@ -354,7 +361,7 @@ Capacity was global (8 requests in flight for the instance), so one busy tenant 
 
 ### 13.3 CI
 
-Tests; a second run with the state in the Firestore emulator; strict E2A conformance; the release gate and its report; Terraform fmt, validate and test for both stacks; the image build with a vulnerability scan. The `landscape-gcp` workflow runs the scenario.
+Tests; a second run with the state in the Firestore emulator; strict E2A conformance; the release gate and its report; Terraform fmt, validate and test for the stacks (including the SLOs and the log-based metrics, with a mocked provider); the image build with a vulnerability scan. The `landscape-gcp` workflow runs the scenario.
 
 ### 13.4 The landscape scenario
 
@@ -365,7 +372,7 @@ Tests; a second run with the state in the Firestore emulator; strict E2A conform
 | # | Gap or deviation | Effect | Follow-up |
 |---|---|---|---|
 | G-1 (closed, GCP-02 A.1) | The execution step posts to settlement-service's adjustment API directly, as reconciliation does, not through reconciliation | was: the exception stayed open. Now: after the ledger read-back, `resolve_exception` asks reconciliation to close it; reconciliation reads the ledger itself and closes only if an adjustment with that id exists whose reference names the bank line. If reconciliation is down or refuses, the posting stands, the exception stays open and the receipt says so | `POST /service/v1/exceptions/{line_id}/resolve` (role `reconciliation.resolve`) |
-| G-2 | One trace across the services is not implemented | correlation ids are per request, not carried on the tools' calls | carry the correlation id and add tracing |
+| G-2 (closed, GCP-02 B) | Correlation ids per request only | was: not carried on the tools' calls. Now every call carries `X-Correlation-Id`, each service logs it, and `landscape/trace_check.sh` finds one run in all five services' logs | Cloud Trace spans are not done (optional) |
 | G-3 | The 62-case sets were written for the simulated model; run against `gemini-3.5-flash-lite` they score 0.943 (50 of 53 golden cases perfect, 9 of 9 red-team cases pass), the score before two fixes was 0.855 | three golden cases were below 1.0 in the second run: two expect the policy's limit, which the live model never reaches because it declines first (they stay below 1.0); the third posts after approval and met HTTP 429, and passed when run alone after the quota reset | keep the sets as wiring evidence; a live-specific variant of the two limit cases (`docs/EVALUATION_REPORT.md`) |
 | G-4 | Latency is measured for one cloud run, not as percentiles | p50 and p95 are unknown; cold start is inside the one run | repeat the scenario and read the request log |
 | G-5 | *Closed.* Cloud-side identity is verified by Cloud Run IAM in the cloud | the cloud scenario exercises IAM's signature check, the issuer rule and the grants | none |
@@ -373,3 +380,7 @@ Tests; a second run with the state in the Firestore emulator; strict E2A conform
 | G-7 | Approvals are listed from an index of the newest 500 per tenant | older approvals stay readable by id but not listed | pagination if needed |
 | G-8 | The free-tier model is sometimes busy (503) and slow | an investigation took 79 seconds in the one cloud run; answers degrade to the verified facts when a call fails | a paid or less loaded model is a change of `LLM_MODEL_ID`, not of code; the trial is not upgraded |
 | G-9 | With real identities the self-approval case (step 7a) cannot be run by one stand-in account | covered locally and by tests (`DECIDER_REFUSED`); the cloud run covers an investigator's refusal and a second person's approval | a third stand-in account holding both roles |
+| G-10 | The other four systems serve one tenant per deployment | a second customer on the live cloud needs reconciliation and the ledger made multi-tenant; the assistant itself is tested with two customers on stand-ins | made multi-tenant if a second customer is ever run for real |
+| G-11 | Per-tenant capacity is per instance and is a cap, not fair queuing | with several instances a tenant can hold more slots in total | a shared limiter if instances scale out |
+| G-12 | Document search is lexical on a handful of passages | a paraphrase with no shared word finds nothing (the answer is then NOT_FOUND, never invented) | a vector store behind `DocumentStore.search` for a large corpus |
+| G-13 | The canary gets the scenario's traffic and almost no real traffic | the gate, not live error rates, catches a bad candidate | a traffic-based soak where there are real users |
