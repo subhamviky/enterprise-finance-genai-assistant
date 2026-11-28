@@ -1,6 +1,6 @@
 # Disaster recovery plan
 
-- **Status:** Reviewed 2026-11-28 · **Platform document.** Targets are those the drills measured, not promises: a single-region, single-author demonstration.
+- **Status:** Draft 2026-11-28, awaiting owner review · **Platform document.** Targets are those the drills measured, not promises: a single-region, single-author demonstration.
 
 ## What can be lost, and what protects it
 

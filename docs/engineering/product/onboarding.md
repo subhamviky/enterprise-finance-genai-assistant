@@ -1,6 +1,6 @@
 # Onboarding: your first day on this repository
 
-- **Status:** Reviewed 2026-11-28
+- **Status:** Draft 2026-11-28, awaiting owner review
 
 ## Read, in this order (about 90 minutes)
 

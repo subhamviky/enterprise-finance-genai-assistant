@@ -1,6 +1,6 @@
 # Threat model: the assistant and its landscape
 
-- **Status:** Reviewed 2026-11-28 · **Method:** STRIDE per trust boundary, plus the LLM-specific threats (OWASP Top 10 for LLM applications) · **Scope:** `genai-assistant-service` and how it reaches the four systems (settlement, reconciliation, audit-ai, O2C) on Google Cloud. Reference implementation on synthetic data: see [data classification](data-classification.md).
+- **Status:** Draft 2026-11-28, awaiting owner review · **Method:** STRIDE per trust boundary, plus the LLM-specific threats (OWASP Top 10 for LLM applications) · **Scope:** `genai-assistant-service` and how it reaches the four systems (settlement, reconciliation, audit-ai, O2C) on Google Cloud. Reference implementation on synthetic data: see [data classification](data-classification.md).
 
 ## 1. What we protect (assets)
 

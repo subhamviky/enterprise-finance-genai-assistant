@@ -1,6 +1,6 @@
 # Incident response and on-call runbook
 
-- **Status:** Reviewed 2026-11-28 · **Platform document.** The landscape has one operator (the repository owner) and no pager; this is how an incident would be run by a team, scaled down. Day-to-day operation is in `docs/RUNBOOK.md`; failure rehearsals are in `docs/DRILLS.md`.
+- **Status:** Draft 2026-11-28, awaiting owner review · **Platform document.** The landscape has one operator (the repository owner) and no pager; this is how an incident would be run by a team, scaled down. Day-to-day operation is in `docs/RUNBOOK.md`; failure rehearsals are in `docs/DRILLS.md`.
 
 ## Severity
 

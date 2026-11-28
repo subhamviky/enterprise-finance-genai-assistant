@@ -1,6 +1,6 @@
 # Requirements and user stories
 
-- **Status:** Reviewed 2026-11-28 · The design document (`docs/design/GENAI_ASSISTANT_DESIGN.md`, section 2) traces requirements to the design; this document states them from the users' side, with acceptance criteria that are tests.
+- **Status:** Draft 2026-11-28, awaiting owner review · The design document (`docs/design/GENAI_ASSISTANT_DESIGN.md`, section 2) traces requirements to the design; this document states them from the users' side, with acceptance criteria that are tests.
 
 ## Personas
 

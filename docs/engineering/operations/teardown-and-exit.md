@@ -1,6 +1,6 @@
 # Teardown and exit plan
 
-- **Status:** Reviewed 2026-11-28 · **Platform document.** Trial started 25 November 2026 and ends about 23 February 2027. Evidence capture and teardown are planned for the week of 8 February 2027.
+- **Status:** Draft 2026-11-28, awaiting owner review · **Platform document.** Trial started 25 November 2026 and ends about 23 February 2027. Evidence capture and teardown are planned for the week of 8 February 2027.
 
 ## What outlives the cloud
 

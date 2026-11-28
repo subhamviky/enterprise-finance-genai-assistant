@@ -1,6 +1,6 @@
 # Data classification and handling
 
-- **Status:** Reviewed 2026-11-28 · **Applies to:** the whole landscape (assistant, settlement, audit-ai, reconciliation, O2C).
+- **Status:** Draft 2026-11-28, awaiting owner review · **Applies to:** the whole landscape (assistant, settlement, audit-ai, reconciliation, O2C).
 
 ## Rule
 

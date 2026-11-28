@@ -1,6 +1,6 @@
 # Cost and capacity
 
-- **Status:** Reviewed 2026-11-28 · **Platform document.** The landscape costs nothing by design and is never upgraded (ADR 0001). This records what the limits are, what breaks first, and what a paid sizing would have to answer; it contains no price quotations because those change.
+- **Status:** Draft 2026-11-28, awaiting owner review · **Platform document.** The landscape costs nothing by design and is never upgraded (ADR 0001). This records what the limits are, what breaks first, and what a paid sizing would have to answer; it contains no price quotations because those change.
 
 ## Where the cost is zero, and why
 

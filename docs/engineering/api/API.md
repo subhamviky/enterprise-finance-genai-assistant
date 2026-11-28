@@ -1,6 +1,6 @@
 # API reference: genai-assistant-service
 
-- **Status:** Reviewed 2026-11-28 · **Source of truth:** `genai-assistant-service/src/genai_assistant_service/routers/api.py`; FastAPI also serves `/openapi.json` and `/docs` from a running service. Base path `/api/v1`. All routes are private: on Cloud Run IAM verifies the caller's Google ID token before the request arrives.
+- **Status:** Draft 2026-11-28, awaiting owner review · **Source of truth:** `genai-assistant-service/src/genai_assistant_service/routers/api.py`; FastAPI also serves `/openapi.json` and `/docs` from a running service. Base path `/api/v1`. All routes are private: on Cloud Run IAM verifies the caller's Google ID token before the request arrives.
 
 ## Calling convention
 

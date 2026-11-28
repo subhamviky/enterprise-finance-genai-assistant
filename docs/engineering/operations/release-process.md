@@ -1,6 +1,6 @@
 # Release process
 
-- **Status:** Reviewed 2026-11-28 · **Platform document** (the workflows live in this repository and act on all five services).
+- **Status:** Draft 2026-11-28, awaiting owner review · **Platform document** (the workflows live in this repository and act on all five services).
 
 ## Versioning
 

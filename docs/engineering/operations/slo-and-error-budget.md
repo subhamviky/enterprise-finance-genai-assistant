@@ -1,6 +1,6 @@
 # Service level objectives and error-budget policy
 
-- **Status:** Reviewed 2026-11-28 · **Owner:** repository owner · **Implemented in:** `landscape/observability` (Terraform, tested with a mocked provider) · **Platform document**: applies to all five services.
+- **Status:** Draft 2026-11-28, awaiting owner review · **Owner:** repository owner · **Implemented in:** `landscape/observability` (Terraform, tested with a mocked provider) · **Platform document**: applies to all five services.
 
 ## Objectives
 
