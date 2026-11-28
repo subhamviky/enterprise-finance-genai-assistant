@@ -110,8 +110,8 @@ def test_another_tenant_cannot_see_or_decide_an_approval(assistant, landscape):
 
 
 def test_a_cross_tenant_request_reads_nothing(assistant, landscape):
-    answer = assistant.ask("Why is bank line L-1001 unmatched?", "globex", "eve@globex.example", "investigator")
-    assert answer["status"] == "NOT_FOUND" and all(c["tenant"] == "globex" for c in landscape.calls)
+    answer = assistant.ask("Why is bank line L-1001 unmatched?", "initech", "eve@initech.example", "investigator")
+    assert answer["status"] == "NOT_FOUND" and all(c["tenant"] == "initech" for c in landscape.calls)
 
 
 def test_a_rejected_proposal_posts_nothing(assistant, landscape):

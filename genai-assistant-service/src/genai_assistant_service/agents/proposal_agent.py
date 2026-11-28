@@ -13,7 +13,7 @@ from e2a import BaseAgent
 from pydantic import ValidationError
 
 from ..services.evidence import as_text
-from ..services.policy import Policy
+from ..services.policy import Policy, PolicyBook
 from .intent_agent import json_object
 from .proposal_agent_output import ProposalAgentOutput
 
@@ -46,8 +46,9 @@ def draft_object(data):
 class ProposalAgent(BaseAgent):
     agent_name = 'ProposalAgent'
 
-    def __init__(self, policy: Policy = None) -> None:
-        self.policy = policy or Policy()
+    def __init__(self, policy=None) -> None:
+        self.book = PolicyBook.of(policy)
+        self.policy = self.book.base
 
     def _build_messages(self, state, ctx):
         named = state.get('settlement_id')
@@ -64,7 +65,8 @@ class ProposalAgent(BaseAgent):
             state['proposal_refused'] = 'not valid JSON for the proposal schema'
             return 0.0
         settlement = (state.get('settlements') or {}).get(proposal['settlement_id'])
-        reason = self.policy.check_proposal(proposal, settlement) or self.policy.check_against_bank_line(
+        policy = self.book.for_tenant(state.get('tenant_id'))           # the customer's limits and currencies
+        reason = policy.check_proposal(proposal, settlement) or policy.check_against_bank_line(
             proposal, settlement, self._evidence(state, 'line'), self._evidence(state, 'recon'),
             named=state.get('settlement_id'), settlements=state.get('settlements'))
         if reason:

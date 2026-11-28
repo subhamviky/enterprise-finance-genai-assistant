@@ -3,12 +3,13 @@ name a tenant, a caller and an acting role, and a non-empty question; the role m
 to the assistant at all (the entitlement stage then checks it per agent)."""
 from e2a import BaseValidationService, ValidationResult
 
-from .policy import Policy
+from .policy import PolicyBook
 
 
 class ServiceValidation(BaseValidationService):
-    def __init__(self, policy: Policy = None) -> None:
-        self.policy = policy or Policy()
+    def __init__(self, policy=None) -> None:
+        self.book = PolicyBook.of(policy)
+        self.policy = self.book.base
         self.validator_registry = {name: self._validate_request for name in
                                    ('IntentAgent', 'EvidenceAgent', 'InvestigatorAgent', 'ProposalAgent', 'ExecutionAgent')}
 
@@ -19,7 +20,7 @@ class ServiceValidation(BaseValidationService):
         return not errors, errors
 
     def _enforce_entitlement_gate(self, agent_name, state, config=None, **kwargs) -> ValidationResult:
-        if state.get('role') in self.policy.entitlements.get(agent_name, []):
+        if state.get('role') in self.book.for_tenant(state.get('tenant_id')).entitlements.get(agent_name, []):
             return ValidationResult(valid=True, errors=[], agent_name=agent_name)
         return ValidationResult(valid=False, forbidden=True, agent_name=agent_name,
                                 errors=[f"role '{state.get('role')}' may not use {agent_name}"])

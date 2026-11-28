@@ -21,15 +21,16 @@ from ..agents.intent_agent import IntentAgent
 from ..agents.investigator_agent import InvestigatorAgent
 from ..agents.proposal_agent import ProposalAgent
 from ..services.governance import actionable
-from ..services.policy import Policy
+from ..services.policy import PolicyBook
 
 
 class InvestigationWorkflow(BaseWorkflow):
-    def __init__(self, agents=None, policy: Policy = None) -> None:
-        self.policy = policy or Policy()
+    def __init__(self, agents=None, policy=None) -> None:
+        self.book = PolicyBook.of(policy)
+        self.policy = self.book.base
         agents = agents or {'IntentAgent': IntentAgent(), 'EvidenceAgent': EvidenceAgent(),
                             'InvestigatorAgent': InvestigatorAgent(),
-                            'ProposalAgent': ProposalAgent(self.policy), 'ExecutionAgent': ExecutionAgent()}
+                            'ProposalAgent': ProposalAgent(self.book), 'ExecutionAgent': ExecutionAgent()}
         self.agents = agents
 
     def _build_workflow(self, ctx):
@@ -62,10 +63,11 @@ class InvestigationWorkflow(BaseWorkflow):
 
     def _authorize_decision(self, checkpoint, decision, ctx) -> bool:
         """Only an approver decides, and never on their own request (four eyes)."""
-        if decision.get('role') != self.policy.approver_role:
-            raise ResumeRefused(f"only role '{self.policy.approver_role}' may decide", 'resume',
+        policy = self.book.for_tenant(checkpoint.get('tenant_id'))       # the customer's approver role
+        if decision.get('role') != policy.approver_role:
+            raise ResumeRefused(f"only role '{policy.approver_role}' may decide", 'resume',
                                 code='DECIDER_REFUSED')
-        if self.policy.four_eyes and decision.get('decided_by') == checkpoint.get('requested_by'):
+        if policy.four_eyes and decision.get('decided_by') == checkpoint.get('requested_by'):
             raise ResumeRefused('four eyes: the requester cannot approve their own adjustment', 'resume',
                                 code='DECIDER_REFUSED')
         return True

@@ -299,7 +299,7 @@ def main() -> None:
     step("10a An injection in the request is refused", attack["status"] == "REFUSED" and len(adjustments(s_sid)) == 1,
          attack["answer"][:160])
     other = call("POST", f"{GENAI}/api/v1/ask", json={"text": f"Why is bank line {L2} unmatched?"},
-                 headers=person("eve@globex.example", "investigator", tenant="globex"))
+                 headers=person("eve@initech.example", "investigator", tenant="initech"))
     step("10b Another tenant reads nothing of acme",
          other.status_code in (403, 404) or other.json().get("status") == "NOT_FOUND",
          f"HTTP {other.status_code} {other.text[:120]}")

@@ -103,13 +103,24 @@ def world() -> Dict[str, Any]:
     }
 
 
+def localise(data: Any, tenant: str, currency: str) -> Any:
+    """The synthetic world as another customer's: its tenant id and its currency, the same shapes and amounts."""
+    if isinstance(data, dict):
+        return {k: (tenant if k == "tenant_id" and v == TENANT else currency if k == "currency" and v == "EUR"
+                    else localise(v, tenant, currency)) for k, v in data.items()}
+    if isinstance(data, list):
+        return [localise(v, tenant, currency) for v in data]
+    return data
+
+
 class Landscape:
     """The four systems' HTTP contracts over one synthetic world."""
 
     WRITE_OFF_LIMIT = Decimal("500.00")         # settlement-service's own limit (it also checks)
 
-    def __init__(self, data: Optional[Dict] = None) -> None:
-        self.data = data or world()
+    def __init__(self, data: Optional[Dict] = None, tenant: str = TENANT, currency: str = "EUR") -> None:
+        self.tenant = tenant
+        self.data = data or localise(world(), tenant, currency)
         self.calls: List[Dict[str, Any]] = []
         self.faults: Dict[str, Any] = {}        # path prefix -> status code or "timeout"
         self._ids = itertools.count(1)
@@ -134,7 +145,7 @@ class Landscape:
         injected = self._fault(system, request)
         if injected is not None:
             return injected
-        if request.headers.get("X-Tenant-Id") != TENANT:
+        if request.headers.get("X-Tenant-Id") != self.tenant:
             return httpx.Response(403, json={"error": "tenant not granted"})
         path, d = request.url.path, self.data
         if system == "recon" and path == "/service/v1/exceptions":

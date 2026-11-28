@@ -1,0 +1,14 @@
+# Customer: Acme Retail (simulated). A European retailer: euros, one finance approver, small write-offs.
+# A customer file overrides the base policy (policies/governance.yaml) for requests of its tenant, and only the
+# sections it names; everything else (agents, tools, firewall, capacity) stays the base.
+tenant: acme
+customer: Acme Retail
+currencies: [EUR]
+adjustments:
+  WRITE_OFF: {max_amount: "250.00"}
+  REFUND: {max_amount: "1000.00"}
+approval:
+  approver_role: finance-approver
+  four_eyes: true
+  approvals_required: 1            # one approver other than the requester
+  expires_after_hours: 24
