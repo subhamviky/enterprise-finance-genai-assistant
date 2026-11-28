@@ -31,3 +31,19 @@ run "every_slo_has_a_fast_burn_alert_and_no_channel_by_default" {
     error_message = "no notification channel unless one is given"
   }
 }
+
+run "the_assistants_answers_and_tokens_are_log_based_metrics" {
+  command = plan
+  assert {
+    condition     = google_logging_metric.assistant_answers.label_extractors["degraded"] == "EXTRACT(jsonPayload.degraded)"
+    error_message = "the degraded (fallback) rate is a label of the answers metric"
+  }
+  assert {
+    condition     = google_logging_metric.assistant_tokens.value_extractor == "EXTRACT(jsonPayload.tokens)"
+    error_message = "tokens come from the assistant's answer line"
+  }
+  assert {
+    condition     = strcontains(google_logging_metric.assistant_answers.filter, "genai-assistant-service")
+    error_message = "the metrics read only the assistant's own lines"
+  }
+}

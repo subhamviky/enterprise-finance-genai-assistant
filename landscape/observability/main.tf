@@ -154,3 +154,67 @@ output "slos" {
     { for k, v in google_monitoring_slo.latency : "${k}/latency" => v.goal },
   )
 }
+
+# ---- log-based metrics from the assistant's one JSON line per answer (services/assistant.py `_record`) ----
+# answers by outcome: how many ended COMPLETED, REFUSED, NOT_FOUND..., and how many were answered by the deterministic
+# fallback instead of the model ("degraded"): the rate that tells whether the free-tier model is doing the work.
+resource "google_logging_metric" "assistant_answers" {
+  name        = "assistant_answers"
+  description = "Answers of genai-assistant-service by status, intent, degraded (fallback) and who read the intent"
+  filter      = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"genai-assistant-service\" AND jsonPayload.event=\"assistant_answer\""
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key         = "status"
+      value_type  = "STRING"
+      description = "COMPLETED, REFUSED, NOT_FOUND, AWAITING_APPROVAL..."
+    }
+    labels {
+      key         = "intent"
+      value_type  = "STRING"
+      description = "INVESTIGATE, EXPLAIN, PROPOSE, POLICY, UNSUPPORTED"
+    }
+    labels {
+      key         = "degraded"
+      value_type  = "STRING"
+      description = "true when the deterministic fallback replaced the model"
+    }
+    labels {
+      key         = "intent_by"
+      value_type  = "STRING"
+      description = "rules or model"
+    }
+  }
+
+  label_extractors = {
+    status    = "EXTRACT(jsonPayload.status)"
+    intent    = "EXTRACT(jsonPayload.intent)"
+    degraded  = "EXTRACT(jsonPayload.degraded)"
+    intent_by = "EXTRACT(jsonPayload.intent_by)"
+  }
+}
+
+# tokens the model used per answered request (provider-reported, or the framework's estimate)
+resource "google_logging_metric" "assistant_tokens" {
+  name            = "assistant_tokens"
+  description     = "Tokens used per answered request of genai-assistant-service"
+  filter          = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"genai-assistant-service\" AND jsonPayload.event=\"assistant_answer\""
+  value_extractor = "EXTRACT(jsonPayload.tokens)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 12
+      growth_factor      = 2
+      scale              = 50
+    }
+  }
+}

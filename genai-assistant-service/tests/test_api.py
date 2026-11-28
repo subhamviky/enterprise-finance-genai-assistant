@@ -96,3 +96,17 @@ def test_an_expired_approval_is_410_gone_over_http(assistant, client, landscape)
     assert late.status_code == 410 and "make the request again" in late.json()["detail"]
     assert landscape.posted() == []
     assert client.get(f"/api/v1/approvals/{approval}", headers=as_(BO)).json()["status"] == "EXPIRED"
+
+
+def test_every_answer_leaves_one_metric_line_without_the_question(assistant, landscape, caplog):
+    import json
+    import logging
+    from conftest import ask
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        ask(assistant, "Why is bank line L-1001 unmatched?")
+    lines = [json.loads(r.getMessage()) for r in caplog.records if '"assistant_answer"' in r.getMessage()]
+    assert len(lines) == 1, lines
+    line = lines[0]
+    assert line["status"] == "COMPLETED" and line["intent"] == "INVESTIGATE" and line["tenant"] == "acme"
+    assert line["intent_by"] == "rules" and isinstance(line["tokens"], int) and line["degraded"] is False
+    assert "L-1001" not in json.dumps(line) and "ana@acme.example" not in json.dumps(line)
