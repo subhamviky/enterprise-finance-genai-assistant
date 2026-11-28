@@ -148,6 +148,30 @@ Also try, once, the expiry (it needs no new revision): run the propose phase, wa
 
 ---
 
+## Drill 6: promote a revision with a canary, and roll back a bad one
+
+**What it shows:** a new revision of the assistant reaches customers in steps, and a bad one is taken back by the pipeline, not by a person at night. Actions, `promote`, Run workflow (works from a phone, desktop view).
+
+1. **Normal run** (`ref` main, `break` unticked). The jobs go: `deploy` (a revision with 0% traffic on its own tag URL) → `shift10` (10% canary) → `gate10` (the 14-step scenario against the candidate's tag URL) → `promote` (100%) → `gate100` (the scenario through the service URL). `rollback` is skipped. The run summary names the previous and the new revision.
+2. **Broken run** (`break` ticked). The candidate's reconciliation URL points nowhere. `gate10` must fail (step 1 cannot read the exception), `promote` and `gate100` are skipped, and `rollback` puts 100% back on the previous revision, removes the tag, and writes a clean no-traffic revision so the broken setting is not left in the service template.
+
+After the broken run confirm, in Cloud Shell, that the service serves the old revision and that `landscape-gcp` on `main` passes:
+
+```bash
+gcloud run services describe genai-assistant-service --region us-central1 --format='value(status.traffic[0].revisionName,status.traffic[0].percent)'
+```
+
+| Recorded | Normal run | Broken run |
+|---|---|---|
+| Revision before / after | | |
+| Which gate failed | none | gate10 |
+| Seconds from the failed gate to 100% back | n/a | |
+| Service serves | new revision | previous revision |
+
+**Limits, stated plainly:** the 10% canary gets the scenario's traffic plus whatever real traffic arrives; this landscape has almost none, so the gate, not live error rates, is what catches a bad candidate. `ops deploy` still goes straight to 100%: use `promote` for changes that matter. The tag URL is tested with tokens minted for the service URL; if Cloud Run rejects that audience, `gate10` fails on step 1 with 401 even for a good candidate (see the first-run notes below once it has run).
+
+---
+
 ## Drills 5 and onward: run in CI on every change
 
-The failure-injection matrix (`tests/test_failure_matrix.py`) is a set of drills that run against the stand-ins on every commit: the model unavailable (429 or 503) degrades to the verified facts; a replayed approval posts nothing twice; concurrent approvals post once; a settlement outage leaves nothing posted; a reconciliation outage leaves the exception open but keeps the posting. With drills 1 to 4 in the cloud they make the "at least five drills, three in the cloud" criterion of the plan.
+The failure-injection matrix (`tests/test_failure_matrix.py`) is a set of drills that run against the stand-ins on every commit: the model unavailable (429 or 503) degrades to the verified facts; a replayed approval posts nothing twice; concurrent approvals post once; a settlement outage leaves nothing posted; a reconciliation outage leaves the exception open but keeps the posting. With drills 1 to 4 and 6 in the cloud they make the "at least five drills, three in the cloud" criterion of the plan.

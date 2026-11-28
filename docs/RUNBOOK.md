@@ -264,3 +264,7 @@ The `deploy` action replaces, one for one, the Cloud Build blocks used so far; a
 3. **Who may call it.** The people and their roles in the assistant stack's `identity_subject_roles` (Terraform): `"person@customer.example" = ["tenant:<tenant>", "<their role>"]`, then apply the stack.
 4. **The backend services.** Each of reconciliation (`RECON_TENANT`), the ledger's accounts and O2C's catalog serves the tenants it is configured for. A new customer on the live cloud needs those configured or made multi-tenant first; the assistant does not do it for them.
 5. **Roll out in steps** as the record's rollout plan says, with the way back (lower the limits to zero in the file).
+
+## Promoting the assistant with a canary (GCP-02 Phase C, item 12)
+
+`.github/workflows/promote.yml` ("promote" in Actions) is the way to ship an assistant change that matters: a candidate revision with no traffic and its own tag URL, a 10% canary, the 14-step scenario against the candidate, then 100% and the scenario again. If a gate fails after traffic moved, `rollback` puts the previous revision back at 100% by itself. Inputs: `ref` (branch or tag) and `break` (a drill: ships a deliberately broken candidate to show the rollback; see Drill 6 in `DRILLS.md`). `ops deploy` still goes straight to 100% and skips all of this. To roll back by hand later: `gcloud run services update-traffic genai-assistant-service --region us-central1 --to-revisions <previous revision>=100`.
