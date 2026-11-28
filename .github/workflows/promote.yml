@@ -1,0 +1,178 @@
+# Promote a new revision of the assistant with a canary and an automatic rollback (GCP-02 Phase C, item 12).
+#
+#   deploy    build the image from `ref`, tag it by commit, give Cloud Run a revision that takes NO traffic, reachable
+#             on its own tag URL (candidate---<service>...). The previous serving revision is recorded first.
+#   shift10   10% of the traffic goes to the candidate, 90% stays on the previous revision.
+#   gate10    the landscape-gcp scenario (the same 14 steps) against the candidate's tag URL.
+#   promote   100% to the candidate.
+#   gate100   the scenario again, through the service URL.
+#   rollback  runs only if a step after the shift failed: 100% back to the previous revision, the tag removed.
+#
+# "break" ticked deliberately ships a bad candidate (its reconciliation URL points nowhere), to watch the rollback work.
+# After a rollback of a broken candidate a clean no-traffic revision replaces the broken template, so the next deploy
+# does not inherit the fault. Same sign-in as ops.yml (Workload Identity Federation, the deployer: run.admin,
+# artifactregistry.writer). `ops deploy` still goes straight to 100% and skips the canary; use promote for real changes.
+name: promote
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "branch or tag of the assistant repository to promote"
+        default: "main"
+      break:
+        description: "drill: ship a deliberately broken candidate and watch the rollback"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+env:
+  SERVICE: genai-assistant-service
+  REGION: us-central1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      prev: ${{ steps.rev.outputs.prev }}
+      candidate: ${{ steps.rev.outputs.candidate }}
+      tag_url: ${{ steps.rev.outputs.tag_url }}
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Which revision serves now
+        id: prev
+        run: |
+          prev="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='json' \
+                  | jq -r '[.status.traffic[] | select(.percent==100)][0].revisionName // .status.latestReadyRevisionName')"
+          [ -n "$prev" ] && [ "$prev" != null ] || { echo "cannot tell which revision serves"; exit 1; }
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+      - name: Build and push the image (tagged by commit)
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/landscape/$SERVICE"
+          SHA="$(git rev-parse --short=12 HEAD)"
+          docker build -t "$IMAGE:$SHA" --build-arg POETRY_EXTRAS=gemini genai-assistant-service
+          docker push "$IMAGE:$SHA"
+          echo "IMAGE=$IMAGE:$SHA" >> "$GITHUB_ENV"
+      - name: A candidate revision with no traffic, on its own tag
+        id: rev
+        env:
+          PREV: ${{ steps.prev.outputs.prev }}
+          BREAK: ${{ inputs.break }}
+        run: |
+          suffix="c${GITHUB_RUN_ID: -8}"
+          extra=()
+          [ "$BREAK" = true ] && extra=(--update-env-vars "RECONCILIATION_API_URL=https://reconciliation.invalid")
+          gcloud run services update "$SERVICE" --region "$REGION" --image "$IMAGE" \
+            --no-traffic --tag candidate --revision-suffix "$suffix" "${extra[@]}" --quiet
+          json="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json)"
+          cand="$(echo "$json" | jq -r '.status.traffic[] | select(.tag=="candidate") | .revisionName')"
+          url="$(echo "$json"  | jq -r '.status.traffic[] | select(.tag=="candidate") | .url')"
+          [ -n "$cand" ] && [ "$cand" != null ] && [ -n "$url" ] || { echo "the candidate is not tagged"; exit 1; }
+          echo "candidate=$cand" >> "$GITHUB_OUTPUT"; echo "tag_url=$url" >> "$GITHUB_OUTPUT"
+          echo "prev=$PREV candidate=$cand tag=$url"
+          {
+            echo "### Candidate ready (0% traffic)"
+            echo "| | |"; echo "|---|---|"
+            echo "| serving now | \`$PREV\` |"
+            echo "| candidate | \`$cand\` from \`${{ inputs.ref }}\` |"
+            echo "| deliberately broken | ${{ inputs.break }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  shift10:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" \
+            --to-revisions "${{ needs.deploy.outputs.candidate }}=10,${{ needs.deploy.outputs.prev }}=90" --quiet
+          echo "### 10% canary: \`${{ needs.deploy.outputs.candidate }}\` 10, \`${{ needs.deploy.outputs.prev }}\` 90" >> "$GITHUB_STEP_SUMMARY"
+
+  gate10:
+    needs: [deploy, shift10]
+    permissions: { contents: read, id-token: write }
+    uses: ./.github/workflows/landscape-gcp.yml
+    with:
+      target: cloud
+      genai_url: ${{ needs.deploy.outputs.tag_url }}
+    secrets: inherit
+
+  promote:
+    needs: [deploy, gate10]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" \
+            --to-revisions "${{ needs.deploy.outputs.candidate }}=100" --quiet
+          echo "### Promoted: \`${{ needs.deploy.outputs.candidate }}\` takes 100%" >> "$GITHUB_STEP_SUMMARY"
+
+  gate100:
+    needs: [deploy, promote]
+    permissions: { contents: read, id-token: write }
+    uses: ./.github/workflows/landscape-gcp.yml
+    with:
+      target: cloud
+    secrets: inherit
+
+  rollback:
+    needs: [deploy, shift10, gate10, promote, gate100]
+    if: ${{ always() && needs.shift10.result == 'success' && (needs.gate10.result == 'failure' || needs.promote.result == 'failure' || needs.gate100.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Traffic back to the previous revision
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" \
+            --to-revisions "${{ needs.deploy.outputs.prev }}=100" --remove-tags candidate --quiet
+          {
+            echo "### ROLLED BACK"
+            echo "gate10: ${{ needs.gate10.result }}, promote: ${{ needs.promote.result }}, gate100: ${{ needs.gate100.result }}."
+            echo "\`${{ needs.deploy.outputs.prev }}\` serves 100% again."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean the service template (a broken candidate leaves its fault in it)
+        if: ${{ inputs.break }}
+        env:
+          RECON_URL: ${{ vars.RECONCILIATION_API_URL }}
+        run: |
+          [ -n "$RECON_URL" ] || { echo "RECONCILIATION_API_URL variable is empty: restore it by hand"; exit 1; }
+          gcloud run services update "$SERVICE" --region "$REGION" --no-traffic \
+            --update-env-vars "RECONCILIATION_API_URL=$RECON_URL" --quiet
+          echo "A clean revision (no traffic) now holds the template; the next deploy starts from it." >> "$GITHUB_STEP_SUMMARY"

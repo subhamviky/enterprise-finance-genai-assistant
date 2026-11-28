@@ -40,6 +40,24 @@ on:
       state:
         description: "phase approve only: the DRILL_STATE json printed by the propose phase"
         default: ""
+  workflow_call:                    # the release gate of promote.yml: the same scenario, against a given assistant URL
+    inputs:
+      target:
+        type: string
+        default: cloud
+      genai_url:
+        description: "the assistant's URL to test (a revision tag URL while it takes little or no traffic); empty: the service"
+        type: string
+        default: ""
+      phase:
+        type: string
+        default: all
+      run:
+        type: string
+        default: ""
+      state:
+        type: string
+        default: ""
   pull_request:
     paths: ["landscape/scenario.py", ".github/workflows/landscape-gcp.yml"]
 
@@ -226,7 +244,8 @@ jobs:
       RECON_URL: ${{ vars.RECONCILIATION_API_URL }}
       O2C_URL: ${{ vars.O2C_API_URL }}
       AUDIT_URL: ${{ vars.AUDIT_API_URL }}
-      GENAI_URL: ${{ vars.GENAI_API_URL }}
+      GENAI_URL: ${{ inputs.genai_url || vars.GENAI_API_URL }}
+      GENAI_AUDIENCE: ${{ vars.GENAI_API_URL }}      # tokens are minted for the service URL, whichever URL is tested
       AUDIT_DELIVERY: push
       GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
       SCENARIO_PHASE: ${{ inputs.phase || 'all' }}
@@ -290,6 +309,6 @@ jobs:
           export TOKEN_SETTLEMENT="${{ steps.tok_settlement.outputs.id_token }}" TOKEN_RECON="${{ steps.tok_recon.outputs.id_token }}" \
                  TOKEN_O2C="${{ steps.tok_o2c.outputs.id_token }}" TOKEN_AUDIT="${{ steps.tok_audit.outputs.id_token }}"
           token() { gcloud auth print-identity-token --audiences="$1" "${@:2}"; }
-          export TOKEN_INVESTIGATOR="$(token "$GENAI_URL" --impersonate-service-account="${{ vars.SCENARIO_INVESTIGATOR_SA }}" --include-email)"
-          export TOKEN_APPROVER="$(token "$GENAI_URL" --impersonate-service-account="${{ vars.SCENARIO_APPROVER_SA }}" --include-email)"
+          export TOKEN_INVESTIGATOR="$(token "$GENAI_AUDIENCE" --impersonate-service-account="${{ vars.SCENARIO_INVESTIGATOR_SA }}" --include-email)"
+          export TOKEN_APPROVER="$(token "$GENAI_AUDIENCE" --impersonate-service-account="${{ vars.SCENARIO_APPROVER_SA }}" --include-email)"
           poetry run python ../landscape/scenario.py
