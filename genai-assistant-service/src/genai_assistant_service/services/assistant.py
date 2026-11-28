@@ -10,6 +10,8 @@ The model is bound from E2A_PROVIDER_PROFILE (services/bindings.py): "simulated"
 behaviour in services/simulated.py), "gemini_api" on the free tier. Calls to the systems of record
 carry this service's own identity when E2A_WORKLOAD_IDENTITY is set (e2a_adapters.workload)."""
 import contextlib
+import json
+import logging
 import os
 import threading
 from typing import Any, Dict, Optional
@@ -25,6 +27,8 @@ from .state import state_ports
 from .policy import PolicyBook
 from .stores import ApprovalStore
 from .validation import ServiceValidation
+
+_log = logging.getLogger("uvicorn.error")      # has a handler and INFO level on Cloud Run (see correlation.py)
 
 HELP = ("I investigate unmatched bank lines, explain delayed or flagged settlements and propose write-offs or "
         "refunds for a second person to approve, and answer questions about your policies (limits, approvals, disputes). "
@@ -89,7 +93,23 @@ class AssistantService:
             raise ValueError("; ".join(result["errors"]))
         with self._admit(tenant_id), self.governance.limiter.slot(), governing(tenant_id):
             state = self.workflow.execute(state, self.config, idempotency_key=idempotency_key)
-        return self._outcome(state), state
+        outcome = self._outcome(state)
+        self._record(state, outcome)
+        return outcome, state
+
+    @staticmethod
+    def _record(state, outcome) -> None:
+        """One JSON line per answered request, for the log-based metrics (landscape/observability): how it ended,
+        whether the model's help was replaced by the deterministic fallback, how many tokens it used. No question
+        text and no user: only counts and labels."""
+        try:
+            _log.info(json.dumps({"event": "assistant_answer", "correlation_id": state.get("correlation_id"),
+                                  "tenant": state.get("tenant_id"), "intent": outcome.get("intent"),
+                                  "status": outcome.get("status"), "degraded": bool(outcome.get("degraded")),
+                                  "intent_by": state.get("intent_by", "model"),
+                                  "tokens": int(state.get("cumulative_tokens_used") or 0)}))
+        except Exception:                                  # observability must never fail a request
+            pass
 
     def approve(self, approval_id: str, tenant_id: str, user_id: str, role: str) -> Dict[str, Any]:
         policy = self.book.for_tenant(tenant_id)

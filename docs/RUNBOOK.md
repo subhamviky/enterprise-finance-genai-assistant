@@ -290,3 +290,7 @@ A question about rules rather than records ("What is the write-off limit?", "How
 - A document that disagrees with the enforced policy would mislead a customer, so `tests/test_documents.py` compares each tenant's document limits, currencies and expiry with `policies/customers/<tenant>.yaml` in CI. Change one and the other fails the build.
 - To onboard a customer's documents: add `policies/documents/<tenant>/*.md`, run the tests, deploy with `promote`.
 - Live check: the case `policy_answer_comes_from_the_documents` in `landscape/live_trials.py`.
+
+### Log-based metrics for the model's share of the work (GCP-02 Phase B leftover)
+
+The assistant writes one JSON line per answered request (`event: assistant_answer`: status, intent, degraded, intent_by, tokens; never the question or the user). The same `landscape/observability` stack turns them into two log-based metrics: `assistant_answers` (a counter labelled by status, intent, degraded and intent_by) and `assistant_tokens` (a distribution). The first answers "how often did the deterministic fallback replace the model?" (`degraded=true` over all answers); the second "what does a request cost?". Free-tier allowance for logs-based metrics: Cloud Logging's free allocation covers this volume. Apply with the command above (the new metrics are created; the SLOs stay), then in Monitoring, Metrics explorer, choose `logging.googleapis.com/user/assistant_answers`, group by `degraded`. Metrics only count lines logged after they exist.
