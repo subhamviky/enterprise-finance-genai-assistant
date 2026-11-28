@@ -9,7 +9,9 @@ reject()   the same person refuses: nothing is posted.
 The model is bound from E2A_PROVIDER_PROFILE (services/bindings.py): "simulated" by default (its
 behaviour in services/simulated.py), "gemini_api" on the free tier. Calls to the systems of record
 carry this service's own identity when E2A_WORKLOAD_IDENTITY is set (e2a_adapters.workload)."""
+import contextlib
 import os
+import threading
 from typing import Any, Dict, Optional
 
 from e2a import CapacityRefusal, ResumeRefused, resolve_config
@@ -66,6 +68,8 @@ class AssistantService:
                        **({"credential_provider": credentials} if credentials is not None else {}),
                        **(config or {})}
         self.workflow = InvestigationWorkflow(policy=self.book)
+        self._tenant_inflight: Dict[str, int] = {}
+        self._tenant_lock = threading.Lock()
 
     # --------------------------------------------------------------------- capabilities
     def ask(self, text: str, tenant_id: str, user_id: str, role: str,
@@ -82,7 +86,7 @@ class AssistantService:
             if result.get("forbidden"):
                 raise Forbidden("; ".join(result["errors"]))
             raise ValueError("; ".join(result["errors"]))
-        with self.governance.limiter.slot(), governing(tenant_id):
+        with self._admit(tenant_id), self.governance.limiter.slot(), governing(tenant_id):
             state = self.workflow.execute(state, self.config, idempotency_key=idempotency_key)
         return self._outcome(state), state
 
@@ -100,6 +104,25 @@ class AssistantService:
             receipt["approvers"] = approvers
             self.approvals.record_receipt(tenant_id, approval_id, receipt)
         return self._outcome(state)
+
+    @contextlib.contextmanager
+    def _admit(self, tenant_id):
+        """Fair capacity: one tenant may have only max_inflight_per_tenant requests in flight in this instance, so a
+        noisy customer is refused (retryable, HTTP 503) before it can fill the slots a quiet one needs."""
+        cap = self.policy.max_inflight_per_tenant
+        with self._tenant_lock:
+            n = self._tenant_inflight.get(tenant_id, 0)
+            if n >= cap:
+                raise CapacityRefusal(f"tenant capacity exceeded ({cap} requests in flight); retry later",
+                                      "tenant-capacity")
+            self._tenant_inflight[tenant_id] = n + 1
+        try:
+            yield
+        finally:
+            with self._tenant_lock:
+                self._tenant_inflight[tenant_id] -= 1
+                if not self._tenant_inflight[tenant_id]:
+                    del self._tenant_inflight[tenant_id]
 
     def _approvers_text(self, tenant_id) -> str:
         policy = self.book.for_tenant(tenant_id)
@@ -137,7 +160,7 @@ class AssistantService:
     # -------------------------------------------------------------------------- helpers
     def _decide(self, approval_id, tenant_id, decision) -> Dict:
         try:
-            with self.governance.limiter.slot(), governing(tenant_id):
+            with self._admit(tenant_id), self.governance.limiter.slot(), governing(tenant_id):
                 return self.workflow.resume(approval_id, decision, self.config, tenant_id=tenant_id)
         except ResumeRefused as refused:
             if refused.code == "UNKNOWN_CHECKPOINT":

@@ -295,6 +295,12 @@ PENDING, then APPROVED, REJECTED or EXPIRED, once. A concurrent second decision 
 
 The decision on an approval is one compare-and-set; the claim is held across the material step; settlement-service de-duplicates the posting on the key. A crash after the post and before the receipt leaves a posted adjustment whose retry returns the first result.
 
+### 10.1a Tenants: isolation and fair capacity
+
+Isolation is tested with 24 tenants through one service (`tests/test_isolation.py`): each tenant asking the same thing gets its own proposal, approval and posting, in its own ledger; a tenant lists only its own approvals; another tenant, or an unknown one, can neither see nor approve nor reject an approval (404); every call a tenant's request makes names that tenant; and a client-chosen `Idempotency-Key` used by two tenants is two requests (the claim store is tenant-scoped; the generated key includes the tenant).
+
+Capacity was global (8 requests in flight for the instance), so one busy tenant could take every slot and the next tenant was refused. `capacity.max_inflight_per_tenant` (4 of the 8) now bounds each tenant: the noisy tenant's extra requests are refused at once (retryable, HTTP 503) while a quiet tenant is served. The test holds a tenant's requests in flight with an asynchronous gate, floods it past its share, and asks as another tenant; it fails if the share is raised to the whole instance, which was checked. Limits of the guarantee, stated: the count is per Cloud Run instance, not across instances; it keeps one tenant from taking more than its share, it is not fair queuing, and several noisy tenants together can still fill the instance.
+
 ### 10.2 The failure-injection matrix (each row is a test)
 
 | Failure | Behaviour | Test |

@@ -25,6 +25,8 @@ class Policy:
         self._redaction_spec = list(data["redaction"])
         self.redaction = compile_redactions(self._redaction_spec)
         self.max_inflight = int(data["capacity"]["max_inflight"])
+        self.max_inflight_per_tenant = int(data["capacity"].get("max_inflight_per_tenant",
+                                                                 max(1, self.max_inflight // 2)))
         self.max_token_budget = float(data["capacity"]["max_token_budget"])
         self.customer: Optional[str] = None
         self.currencies: Optional[List[str]] = None        # None: any currency the settlement has

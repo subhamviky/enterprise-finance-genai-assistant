@@ -7,7 +7,7 @@ from e2a_inmemory_adapters import InMemoryIdempotencyStore, InMemoryTransactiona
 
 from genai_assistant_service.services.assistant import AssistantService, Forbidden
 from genai_assistant_service.services.policy import Policy, PolicyBook
-from genai_assistant_service.standins.landscape import Landscape
+from genai_assistant_service.standins.landscape import Landscape, shared_transports
 from genai_assistant_service.tools.catalog import tools
 
 
@@ -60,17 +60,6 @@ import httpx  # noqa: E402
 from genai_assistant_service.services.assistant import Expired  # noqa: E402
 
 
-def both(*landscapes):
-    """The transports of the four systems, answering each request from the landscape of its tenant."""
-    by_tenant = {lnd.tenant: lnd for lnd in landscapes}
-    out = {}
-    for key, system in (("RECONCILIATION_API_URL", "recon"), ("SETTLEMENT_API_URL", "settlement"),
-                        ("O2C_API_URL", "o2c"), ("AUDIT_API_URL", "audit")):
-        out[key] = httpx.MockTransport(
-            lambda r, system=system: by_tenant.get(r.headers.get("X-Tenant-Id"), landscapes[0])._handle(system, r))
-    return out
-
-
 @pytest.fixture
 def two(monkeypatch):
     monkeypatch.delenv("E2A_PROVIDER_PROFILE", raising=False)
@@ -80,7 +69,7 @@ def two(monkeypatch):
     clock = {"now": 1_800_000_000.0}
 
     def service():
-        return AssistantService(tools=tools(transports=both(acme, globex)), state=state, clock=lambda: clock["now"])
+        return AssistantService(tools=tools(transports=shared_transports(acme, globex)), state=state, clock=lambda: clock["now"])
     return type("Two", (), {"acme": acme, "globex": globex, "service": staticmethod(service), "clock": clock})
 
 

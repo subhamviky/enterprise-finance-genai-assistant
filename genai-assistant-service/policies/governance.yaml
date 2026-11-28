@@ -46,5 +46,8 @@ redaction:
 
 capacity:
   max_inflight: 8
+  # no one tenant may hold more than this many of those slots at once (per instance): a noisy customer is refused
+  # (retryable) while a quiet one is still served. Half the slots by default.
+  max_inflight_per_tenant: 4
   # the Gemini free tier's budget per request (tokens); E2A's TokenBudgetStage reads it
   max_token_budget: 6000

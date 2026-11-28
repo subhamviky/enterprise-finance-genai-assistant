@@ -138,6 +138,10 @@ class Landscape:
                 return httpx.Response(int(fault), json={"error": "injected"})
         return None
 
+    def respond(self, system: str, request: httpx.Request) -> httpx.Response:
+        """One system's answer to one request (what its transport does); public so that shared_transports can route."""
+        return self._handle(system, request)
+
     def _handle(self, system: str, request: httpx.Request) -> httpx.Response:
         self.calls.append({"system": system, "method": request.method, "path": request.url.path,
                            "tenant": request.headers.get("X-Tenant-Id"), "key": request.headers.get("Idempotency-Key"),
@@ -217,3 +221,15 @@ class Landscape:
 
     def posted(self) -> List[Dict]:
         return [a for rows in self.data["adjustments"].values() for a in rows]
+
+
+def shared_transports(*landscapes: "Landscape") -> Dict[str, httpx.MockTransport]:
+    """The transports of the four systems, each request answered by the landscape of its tenant (the first one
+    answers, and refuses, a tenant it does not know): one service, many customers, for tests."""
+    by_tenant = {lnd.tenant: lnd for lnd in landscapes}
+    out = {}
+    for key, system in (("RECONCILIATION_API_URL", "recon"), ("SETTLEMENT_API_URL", "settlement"),
+                        ("O2C_API_URL", "o2c"), ("AUDIT_API_URL", "audit")):
+        out[key] = httpx.MockTransport(
+            lambda r, system=system: by_tenant.get(r.headers.get("X-Tenant-Id"), landscapes[0]).respond(system, r))
+    return out
