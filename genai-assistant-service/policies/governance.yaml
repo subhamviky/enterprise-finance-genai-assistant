@@ -31,12 +31,13 @@ approval:
 firewall:
   max_query_chars: 2000
   injection_patterns:
-    - "(?i)ignore (all )?(previous|prior|above) (instructions|rules)"
-    - "(?i)disregard (the|your) (system|previous) (prompt|instructions)"
-    - "(?i)you are now"
-    - "(?i)approve (it|this|the adjustment) (yourself|automatically|without)"
-    - "(?i)reveal (the|your) (system )?prompt"
-    - "(?i)execute (the )?(adjustment|write-?off|refund) (now|immediately|without approval)"
+    # \s+ and the optional filler words: "ignore   the above instructions" (found by tests/test_adversarial.py)
+    - "(?i)ignore\\s+((all|any|the|your|my)\\s+)*(previous|prior|above|earlier|preceding)\\s+(instructions?|rules|prompts?|directions)"
+    - "(?i)disregard\\s+((all|any|the|your)\\s+)*(system|previous|prior|above)\\s+(prompt|instructions?|rules)"
+    - "(?i)you\\s+are\\s+now"
+    - "(?i)approve\\s+(it|this|the\\s+adjustment)\\s+(yourself|automatically|without)"
+    - "(?i)reveal\\s+(the|your)\\s+(system\\s+)?prompt"
+    - "(?i)execute\\s+(the\\s+)?(adjustment|write-?off|refund)\\s+(now|immediately|without\\s+approval)"
 
 redaction:
   - {name: iban, pattern: "\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b", mask: "[IBAN]"}
