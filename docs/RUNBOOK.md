@@ -268,3 +268,15 @@ The `deploy` action replaces, one for one, the Cloud Build blocks used so far; a
 ## Promoting the assistant with a canary (GCP-02 Phase C, item 12)
 
 `.github/workflows/promote.yml` ("promote" in Actions) is the way to ship an assistant change that matters: a candidate revision with no traffic and its own tag URL, a 10% canary, the 14-step scenario against the candidate, then 100% and the scenario again. If a gate fails after traffic moved, `rollback` puts the previous revision back at 100% by itself. Inputs: `ref` (branch or tag) and `break` (a drill: ships a deliberately broken candidate to show the rollback; see Drill 6 in `DRILLS.md`). `ops deploy` still goes straight to 100% and skips all of this. To roll back by hand later: `gcloud run services update-traffic genai-assistant-service --region us-central1 --to-revisions <previous revision>=100`.
+
+## What one request costs (GCP-02 Phase C, item 6)
+
+`landscape/measure.py` counts, per agent step, the model calls, tokens and seconds of the scenario's three requests (a question, an explanation, a proposal and its approval) against the stand-ins. With `--compare` each request runs twice, with the intent read by rules first (the default since this change) and with it asked of the model (`GENAI_INTENT_BY_RULES=false`), so the before and after come from the same run. Offline (simulated model) it counts calls exactly; with the live model it gives the real tokens and seconds:
+
+```bash
+cd genai-assistant-service
+python ../landscape/measure.py --runs 3 --compare --report measure-$(date +%F)-$LLM_MODEL_ID.json     # simulated: no key needed
+E2A_PROVIDER_PROFILE=gemini_api python ../landscape/measure.py --runs 3 --compare --pause 10 --report measure-$(date +%F)-$LLM_MODEL_ID.json   # live: 54 model requests
+```
+
+The optimisation: a request that names a record and says plainly what it wants ("Why is bank line L-1001 unmatched?", "Propose a write-off for bank line L-1001") is read by the rules, so the IntentAgent makes no model call; an unclear request still goes to the model. Simulated result: 2 model calls become 1 for every request type, and 12 to 23% fewer tokens. The live numbers belong in `docs/EVALUATION_REPORT.md` after the first live run. Safety is unchanged: the ids are the ones in the text, the policy checks and the second person still apply (`tests/test_intent_by_rules.py`).
