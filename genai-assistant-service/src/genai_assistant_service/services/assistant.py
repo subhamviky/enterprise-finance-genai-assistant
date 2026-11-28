@@ -27,7 +27,8 @@ from .stores import ApprovalStore
 from .validation import ServiceValidation
 
 HELP = ("I investigate unmatched bank lines, explain delayed or flagged settlements and propose write-offs or "
-        "refunds for a second person to approve. Name the bank line, settlement or order (ORD-...).")
+        "refunds for a second person to approve, and answer questions about your policies (limits, approvals, disputes). "
+        "Name the bank line, settlement or order (ORD-...).")
 
 
 class Forbidden(Exception):

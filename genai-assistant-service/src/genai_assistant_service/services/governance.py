@@ -35,7 +35,8 @@ class EntitlementRefusal(GovernanceRefusal, PermissionError):
 
 
 # the agent that serves an intent: the entitlement stage checks the caller's role for it
-AGENT_FOR = {'INVESTIGATE': 'InvestigatorAgent', 'EXPLAIN': 'InvestigatorAgent', 'PROPOSE': 'ProposalAgent'}
+AGENT_FOR = {'INVESTIGATE': 'InvestigatorAgent', 'EXPLAIN': 'InvestigatorAgent', 'PROPOSE': 'ProposalAgent',
+             'POLICY': 'InvestigatorAgent'}
 
 
 class EntitlementStage(IngressStage):
