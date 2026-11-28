@@ -43,7 +43,7 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      prev: ${{ steps.rev.outputs.prev }}
+      prev: ${{ steps.prev.outputs.prev }}
       candidate: ${{ steps.rev.outputs.candidate }}
       tag_url: ${{ steps.rev.outputs.tag_url }}
     env:
