@@ -1,0 +1,22 @@
+# Customer: Globex Logistics (simulated). A US carrier: dollars, higher limits, a different vocabulary of roles, two
+# approvers for every adjustment, a longer window to decide, and more data masked in what the assistant says.
+tenant: globex
+customer: Globex Logistics
+currencies: [USD]
+entitlements:                      # their roles are analyst and controller, not investigator and finance-approver
+  IntentAgent: [analyst, controller]
+  EvidenceAgent: [analyst, controller]
+  InvestigatorAgent: [analyst, controller]
+  ProposalAgent: [analyst, controller]
+  ExecutionAgent: [analyst, controller]
+adjustments:
+  WRITE_OFF: {max_amount: "1000.00"}
+  REFUND: {max_amount: "5000.00"}
+approval:
+  approver_role: controller
+  four_eyes: true
+  approvals_required: 2            # two different controllers, neither the requester
+  expires_after_hours: 48
+redaction_add:                     # on top of the base masks (IBAN, card, e-mail)
+  - {name: us_phone, pattern: "(?<![\\w-])(?:\\+?1[ .-]?)?\\(?\\d{3}\\)?[ .-]\\d{3}[ .-]\\d{4}(?![\\w-])", mask: "[PHONE]"}
+  - {name: us_bank_account, pattern: "(?<![\\w.-])\\d{9,12}(?![\\w.-])", mask: "[ACCOUNT]"}

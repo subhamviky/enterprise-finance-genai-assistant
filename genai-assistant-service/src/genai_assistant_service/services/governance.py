@@ -9,10 +9,25 @@ allow-list, all built from policies/governance.yaml (services/policy.py).
   approval      an actionable proposal waits for a second person before ExecutionAgent acts
   redaction     IBANs, card numbers and e-mail addresses masked on the way out
 """
+import contextlib
+import contextvars
+
 from e2a import (ApprovalStage, BaseGovernanceFramework, CapacityStage, FirewallStage, GovernanceRefusal,
                  InflightLimiter, IngressStage, RedactionStage, TokenBudgetStage)
 
-from .policy import Policy
+from .policy import Policy, PolicyBook
+
+_GOVERNING_TENANT = contextvars.ContextVar("governing_tenant", default=None)
+
+
+@contextlib.contextmanager
+def governing(tenant_id):
+    """For the duration of a request: the stages below are those of this tenant's customer."""
+    token = _GOVERNING_TENANT.set(tenant_id)
+    try:
+        yield
+    finally:
+        _GOVERNING_TENANT.reset(token)
 
 
 class EntitlementRefusal(GovernanceRefusal, PermissionError):
@@ -43,8 +58,13 @@ def actionable(state) -> bool:
 
 
 class ServiceGovernance(BaseGovernanceFramework):
-    def __init__(self, policy: Policy = None) -> None:
-        self.policy = policy or Policy()
+    """The stages are built from the policy of the request's customer (policies/customers/<tenant>.yaml over the base
+    policy). E2A reads `stages` while it screens and redacts a request; the service wraps each request in
+    governing(tenant), and the property reads it."""
+
+    def __init__(self, policy=None) -> None:
+        self.book = PolicyBook.of(policy)
+        self.policy = self.book.base                    # what is not per customer: tool allow-lists, capacity
         self.limiter = InflightLimiter(self.policy.max_inflight)
 
     @property
@@ -53,13 +73,16 @@ class ServiceGovernance(BaseGovernanceFramework):
 
     @property
     def stages(self):
+        policy = self.book.for_tenant(_GOVERNING_TENANT.get())
+        needed = policy.approvals_required
         return [
             CapacityStage(self.limiter),
             TokenBudgetStage(),
-            FirewallStage(self.policy.injection_patterns, self.policy.redaction, fields=('query',),
-                          max_chars=self.policy.max_query_chars),
-            EntitlementStage(self.policy),
+            FirewallStage(policy.injection_patterns, policy.redaction, fields=('query',),
+                          max_chars=policy.max_query_chars),
+            EntitlementStage(policy),
             ApprovalStage(required=lambda state, ctx: actionable(state),
-                          reason=f'an adjustment waits for a {self.policy.approver_role} (four eyes)'),
-            RedactionStage(self.policy.redaction, fields=('text',)),
+                          reason=(f'an adjustment waits for {needed} different {policy.approver_role}s (four eyes)'
+                                  if needed > 1 else f'an adjustment waits for a {policy.approver_role} (four eyes)')),
+            RedactionStage(policy.redaction, fields=('text',)),
         ]

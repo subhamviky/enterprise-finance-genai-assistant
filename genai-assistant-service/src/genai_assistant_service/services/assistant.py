@@ -17,9 +17,10 @@ from e2a import CapacityRefusal, ResumeRefused, resolve_config
 from ..tools.catalog import tools as default_tools
 from ..workflow.investigation_workflow import InvestigationWorkflow
 from .bindings import DEFAULT_PROFILE
-from .governance import ServiceGovernance
+from .governance import ServiceGovernance, governing
 from .policy import Policy
 from .state import state_ports
+from .policy import PolicyBook
 from .stores import ApprovalStore
 from .validation import ServiceValidation
 
@@ -45,11 +46,13 @@ class AssistantService:
         import time
         from e2a import bindings_from_profile
         from e2a_adapters.workload import workload_credentials
-        self.policy = policy or Policy()
-        self.governance = ServiceGovernance(self.policy)
-        self.validation = ServiceValidation(self.policy)
+        self.book = PolicyBook.of(policy) if policy is not None else PolicyBook.load()
+        self.policy = self.book.base
+        self.governance = ServiceGovernance(self.book)
+        self.validation = ServiceValidation(self.book)
         rows, claims = state or state_ports()
-        self.approvals = ApprovalStore(rows, self.policy.approval_ttl_seconds, clock or time.time)
+        self.approvals = ApprovalStore(rows, lambda tenant: self.book.for_tenant(tenant).approval_ttl_seconds,
+                                       clock or time.time)
         bindings = bindings_from_profile(resolve_config("provider_profile", {}) or DEFAULT_PROFILE, verify=True)
         self.llm = llm or bindings.llm_service
         if llm is None and bindings.profile.name == "simulated":
@@ -62,7 +65,7 @@ class AssistantService:
                        "max_token_budget": self.policy.max_token_budget, "timeout": 8.0, "retries": 2,
                        **({"credential_provider": credentials} if credentials is not None else {}),
                        **(config or {})}
-        self.workflow = InvestigationWorkflow(policy=self.policy)
+        self.workflow = InvestigationWorkflow(policy=self.book)
 
     # --------------------------------------------------------------------- capabilities
     def ask(self, text: str, tenant_id: str, user_id: str, role: str,
@@ -79,16 +82,52 @@ class AssistantService:
             if result.get("forbidden"):
                 raise Forbidden("; ".join(result["errors"]))
             raise ValueError("; ".join(result["errors"]))
-        with self.governance.limiter.slot():
+        with self.governance.limiter.slot(), governing(tenant_id):
             state = self.workflow.execute(state, self.config, idempotency_key=idempotency_key)
         return self._outcome(state), state
 
     def approve(self, approval_id: str, tenant_id: str, user_id: str, role: str) -> Dict[str, Any]:
+        policy = self.book.for_tenant(tenant_id)
+        approvers = [user_id]
+        if policy.approvals_required > 1:                    # this customer wants several different approvers
+            waiting = self._record_approver(policy, approval_id, tenant_id, user_id, role)
+            if waiting is not None:
+                return waiting
+            approvers = list(self.approvals.get(tenant_id, approval_id).get("approvers") or [user_id])
         state = self._decide(approval_id, tenant_id, {"approved": True, "decided_by": user_id, "role": role})
         receipt = state.get("receipt")
         if receipt:
+            receipt["approvers"] = approvers
             self.approvals.record_receipt(tenant_id, approval_id, receipt)
         return self._outcome(state)
+
+    def _approvers_text(self, tenant_id) -> str:
+        policy = self.book.for_tenant(tenant_id)
+        n = policy.approvals_required
+        return f"{n} different {policy.approver_role}s" if n > 1 else f"a {policy.approver_role}"
+
+    def _record_approver(self, policy, approval_id, tenant_id, user_id, role) -> Optional[Dict[str, Any]]:
+        """One approver of several. The same checks as a single decision (the role, and not the requester), then the
+        approver is recorded; the workflow is resumed, and the adjustment posted, only by the last one needed."""
+        current = self.approvals.get(tenant_id, approval_id)
+        if current is None:
+            raise NotFound(f"approval {approval_id}")
+        if current["status"] == "EXPIRED":
+            raise Expired(f"approval {approval_id} expired: it was not decided in time, nothing was posted; "
+                          "make the request again")
+        if role != policy.approver_role:
+            raise Forbidden(f"only role '{policy.approver_role}' may decide")
+        if policy.four_eyes and user_id == current["requested_by"]:
+            raise Forbidden("four eyes: the requester cannot approve their own adjustment")
+        approvers = self.approvals.add_approver(tenant_id, approval_id, user_id)
+        if approvers is None:
+            raise Forbidden(f"approval {approval_id} was already decided")
+        if len(approvers) < policy.approvals_required:
+            missing = policy.approvals_required - len(approvers)
+            return {"status": "AWAITING_APPROVAL", "approval_id": approval_id, "approvers": approvers,
+                    "answer": f"Approved by {', '.join(approvers)}; nothing is posted until {missing} more different "
+                              f"{policy.approver_role}{'s' if missing > 1 else ''} approve."}
+        return None
 
     def reject(self, approval_id: str, tenant_id: str, user_id: str, role: str) -> Dict[str, Any]:
         self._decide(approval_id, tenant_id, {"approved": False, "decided_by": user_id, "role": role})
@@ -98,7 +137,7 @@ class AssistantService:
     # -------------------------------------------------------------------------- helpers
     def _decide(self, approval_id, tenant_id, decision) -> Dict:
         try:
-            with self.governance.limiter.slot():
+            with self.governance.limiter.slot(), governing(tenant_id):
                 return self.workflow.resume(approval_id, decision, self.config, tenant_id=tenant_id)
         except ResumeRefused as refused:
             if refused.code == "UNKNOWN_CHECKPOINT":
@@ -144,7 +183,7 @@ class AssistantService:
             p = state["proposal"]
             return self._answer(state, "AWAITING_APPROVAL",
                                 f"Proposed {p['action']} of {p['amount']} {p['currency']} on settlement "
-                                f"{p['settlement_id']}: {p['reason']}. It waits for a {self.policy.approver_role} "
+                                f"{p['settlement_id']}: {p['reason']}. It waits for {self._approvers_text(state.get('tenant_id'))} "
                                 f"other than you (approval {state['checkpoint_id']}); nothing has been posted.",
                                 approval_id=state["checkpoint_id"], proposal=p,
                                 citations=[e["id"] for e in state["evidence"]])

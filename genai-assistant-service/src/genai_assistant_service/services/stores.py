@@ -14,14 +14,16 @@ class ApprovalStore(BaseCheckpointStore):
     next time anyone reads or decides it (one compare-and-set, so every instance agrees), and an expired approval
     cannot be approved. There is no timer: expiry is decided at the moment it matters."""
 
-    def __init__(self, db: BaseTransactionalStore, ttl_seconds: Optional[int] = None,
+    def __init__(self, db: BaseTransactionalStore, ttl_seconds=None,
                  clock: Callable[[], float] = time.time) -> None:
-        self._db, self._ttl, self._clock = db, ttl_seconds, clock
+        """ttl_seconds: a number, or a function of the tenant id (each customer's own window)."""
+        self._db, self._clock = db, clock
+        self._ttl = ttl_seconds if callable(ttl_seconds) else (lambda tenant: ttl_seconds)
 
     def _due(self, raw: Dict) -> bool:
-        created = raw["approval"].get("created_at")
-        return (self._ttl is not None and raw["approval"]["status"] == "PENDING" and created is not None
-                and self._clock() - created > self._ttl)
+        created, ttl = raw["approval"].get("created_at"), self._ttl(raw["approval"]["tenant_id"])
+        return (ttl is not None and raw["approval"]["status"] == "PENDING" and created is not None
+                and self._clock() - created > ttl)
 
     def _expire_if_due(self, key: str) -> Optional[Dict]:
         """The stored record, expired first if it is due. The change is a compare-and-set: if another instance
@@ -45,7 +47,7 @@ class ApprovalStore(BaseCheckpointStore):
                     "requested_by": checkpoint["requested_by"], "status": "PENDING",
                     "proposal": state.get("proposal"), "query": state.get("query"),
                     "citations": [e["id"] for e in state.get("evidence") or []], "decided_by": None,
-                    "created_at": self._clock()}
+                    "created_at": self._clock(), "approvers": []}
         if self._db.put_if_version(f"approval:{approval['approval_id']}",
                                    {"approval": approval, "checkpoint": checkpoint}, None).committed:
             self._index(approval["tenant_id"], approval["approval_id"])
@@ -73,6 +75,27 @@ class ApprovalStore(BaseCheckpointStore):
         decided = {"approval": dict(raw["approval"], status=status, decided_by=decided_by),
                    "checkpoint": dict(raw["checkpoint"], status=status)}
         return self._db.put_if_version(f"approval:{checkpoint_id}", decided, version).committed
+
+    def add_approver(self, tenant_id: str, approval_id: str, approver: str) -> Optional[List[str]]:
+        """Record one approver of a multi-step approval, as one compare-and-set, and return everyone who has approved
+        so far (including this one). None when the approval is not PENDING any more (decided, rejected or expired).
+        Approving twice is the same as approving once."""
+        key = f"approval:{approval_id}"
+        for _ in range(10):
+            raw = self._expire_if_due(key)
+            if raw is None or raw["approval"]["tenant_id"] != tenant_id or raw["approval"]["status"] != "PENDING":
+                return None
+            current = self._db.get_versioned(key)
+            if current is None:
+                return None
+            raw, version = current
+            approvers = list(raw["approval"].get("approvers") or [])
+            if approver in approvers:
+                return approvers
+            updated = {"approval": dict(raw["approval"], approvers=approvers + [approver]), "checkpoint": raw["checkpoint"]}
+            if self._db.put_if_version(key, updated, version).committed:
+                return approvers + [approver]
+        raise RuntimeError(f"approval {approval_id} is contended; retry")
 
     def get(self, tenant_id: str, approval_id: str) -> Optional[Dict]:
         raw = self._expire_if_due(f"approval:{approval_id}")

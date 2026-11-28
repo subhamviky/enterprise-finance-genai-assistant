@@ -256,3 +256,11 @@ Then open Monitoring, Services, and read each service's SLO page: the compliance
 From a phone: open github.com in the browser, choose "Desktop site", Actions, ops, Run workflow. Merging pull requests works in the GitHub app. Not covered by a button, on purpose: the trace check (it reads logs, which the deployer cannot), and Terraform applies. Those stay in Cloud Shell, or on a laptop.
 
 The `deploy` action replaces, one for one, the Cloud Build blocks used so far; a deploy of `settlement-service` runs its Maven build inside the Docker build and takes the longest (a few minutes).
+
+## Onboarding a customer (a tenant)
+
+1. **Discovery first.** Record the answers (`docs/customers/ACME_RETAIL.md` is the template): currency, limits, roles, approvers, window, masks, what must be auditable.
+2. **The customer file.** `genai-assistant-service/policies/customers/<tenant>.yaml`, naming only what differs from `policies/governance.yaml` (see `acme.yaml` and `globex.yaml`). Test it: add the tenant's journeys to `tests/test_customers.py`.
+3. **Who may call it.** The people and their roles in the assistant stack's `identity_subject_roles` (Terraform): `"person@customer.example" = ["tenant:<tenant>", "<their role>"]`, then apply the stack.
+4. **The backend services.** Each of reconciliation (`RECON_TENANT`), the ledger's accounts and O2C's catalog serves the tenants it is configured for. A new customer on the live cloud needs those configured or made multi-tenant first; the assistant does not do it for them.
+5. **Roll out in steps** as the record's rollout plan says, with the way back (lower the limits to zero in the file).

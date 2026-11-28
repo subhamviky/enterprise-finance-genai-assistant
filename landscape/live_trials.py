@@ -140,7 +140,7 @@ def injection_is_refused(landscape, assistant):
 
 def another_tenant_reads_nothing(landscape, assistant):
     try:
-        answer, _ = assistant.ask_traced("Why is bank line L-1001 unmatched?", "globex", *ANA)
+        answer, _ = assistant.ask_traced("Why is bank line L-1001 unmatched?", "initech", *ANA)
     except Exception as refused:                                  # Forbidden: the tenant has no grant
         return True, [], "wrong-fact"
     leaked = "L-1001" in json.dumps(answer, default=str) and answer["status"] == "COMPLETED"
