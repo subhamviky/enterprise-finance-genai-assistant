@@ -2,7 +2,7 @@
 
     route    IntentAgent          stops when the request is UNSUPPORTED
     gather   EvidenceAgent        stops when no record was found
-    reason   by intent: InvestigatorAgent (INVESTIGATE, EXPLAIN) | ProposalAgent (PROPOSE)
+    reason   by intent: InvestigatorAgent (INVESTIGATE, EXPLAIN, POLICY) | ProposalAgent (PROPOSE)
     execute  ExecutionAgent       only for an actionable proposal; material; pauses for approval
 
 One idempotency claim, taken before the material step and only for an actionable proposal: the
@@ -39,7 +39,8 @@ class InvestigationWorkflow(BaseWorkflow):
             Step('route', a['IntentAgent'], stop_if=lambda s: s.get('intent', 'UNSUPPORTED') == 'UNSUPPORTED'),
             Step('gather', a['EvidenceAgent'], stop_if=lambda s: not s.get('evidence')),
             Route('reason', by='intent', agents={'INVESTIGATE': a['InvestigatorAgent'],
-                                                 'EXPLAIN': a['InvestigatorAgent'], 'PROPOSE': a['ProposalAgent']}),
+                                                 'EXPLAIN': a['InvestigatorAgent'], 'POLICY': a['InvestigatorAgent'],
+                                                 'PROPOSE': a['ProposalAgent']}),
             Step('execute', a['ExecutionAgent'], when=actionable, material=True),
         )
 

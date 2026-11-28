@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator  # noqa: F401
 
 class IntentAgentOutput(BaseModel):
     """IntentAgentOutput (generated)."""
-    intent: Literal['INVESTIGATE', 'EXPLAIN', 'PROPOSE', 'UNSUPPORTED']
+    intent: Literal['INVESTIGATE', 'EXPLAIN', 'PROPOSE', 'POLICY', 'UNSUPPORTED']
     line_id: Optional[str] = Field(default=None)
     settlement_id: Optional[str] = Field(default=None)
     order_id: Optional[str] = Field(default=None)

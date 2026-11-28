@@ -280,3 +280,13 @@ E2A_PROVIDER_PROFILE=gemini_api python ../landscape/measure.py --runs 3 --compar
 ```
 
 The optimisation: a request that names a record and says plainly what it wants ("Why is bank line L-1001 unmatched?", "Propose a write-off for bank line L-1001") is read by the rules, so the IntentAgent makes no model call; an unclear request still goes to the model. Simulated result: 2 model calls become 1 for every request type, and 12 to 23% fewer tokens. The live numbers belong in `docs/EVALUATION_REPORT.md` after the first live run. Safety is unchanged: the ids are the ones in the text, the policy checks and the second person still apply (`tests/test_intent_by_rules.py`).
+
+## The customer's documents (GCP-02 Phase C, item 9)
+
+A question about rules rather than records ("What is the write-off limit?", "How are short payments handled?", "Who approves an adjustment?") has the intent `POLICY`: the EvidenceAgent searches the customer's synthetic documents instead of the systems of record, and the InvestigatorAgent answers from the passages and cites them (`doc:acme/write-off-policy#limits`). The same grounding as for records applies: a figure the answer states must occur in a cited passage, or the answer falls back to the passages themselves.
+
+- Documents are markdown in `genai-assistant-service/policies/documents/` (shared) and `.../<tenant>/` (that tenant's own; a tenant never sees another's). Each `##` section is one passage. They ship in the image with the policies, so changing a document is a deploy.
+- Search is lexical (BM25), with no embeddings, no model and no network: deterministic, free, and enough for a corpus of this size. The `search()` function is the seam where a vector store would go for a large corpus.
+- A document that disagrees with the enforced policy would mislead a customer, so `tests/test_documents.py` compares each tenant's document limits, currencies and expiry with `policies/customers/<tenant>.yaml` in CI. Change one and the other fails the build.
+- To onboard a customer's documents: add `policies/documents/<tenant>/*.md`, run the tests, deploy with `promote`.
+- Live check: the case `policy_answer_comes_from_the_documents` in `landscape/live_trials.py`.

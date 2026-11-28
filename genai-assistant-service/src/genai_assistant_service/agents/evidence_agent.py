@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from e2a import BaseAgent
 
+from ..services import documents
 from ..services.evidence import item, money
 
 MAX_SETTLEMENTS = 3
@@ -22,6 +23,10 @@ class EvidenceAgent(BaseAgent):
     def _prepare(self, state, ctx, io_read):
         """Read the facts this agent needs (replay-safe reads; no side effects)."""
         evidence, gaps, settlements = [], [], []
+        if state.get('intent') == 'POLICY':      # a question about the rules: the customer's own documents
+            evidence += documents.store().search(state.get('tenant_id') or '', str(state.get('query', '')))
+            if not evidence:
+                gaps.append('no document of this customer answers the question')
         if state.get('line_id'):
             result = io_read.call('get_reconciliation_exception', {'params': {}})
             if not result.get('physical_success'):
