@@ -17,3 +17,5 @@ How this project is decided, secured, operated and learned from. The design docu
 **Platform documents.** Five repositories share one deployment, one set of workflows (`landscape-gcp`, `ops`, `promote`), one observability stack and one teardown, so the platform documents (SLO policy, incident response, release process, disaster recovery, cost and capacity, teardown) live here once (ADR 0023). The other repositories carry the documents that are about their own service and link back.
 
 Conventions: Markdown; dated, with a status; no private data; claims name their evidence; honesty about limits is part of the document.
+
+> **Status:** all documents here are drafts written on 28 November 2026 from the repository history, design documents, drills and tests, awaiting the owner's review. Where a date or a detail was not recorded, the document says so.
