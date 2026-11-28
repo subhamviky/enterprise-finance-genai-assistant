@@ -6,6 +6,7 @@ model cannot invent the record to look at. When the model is unavailable or its 
 valid, the fallback classifies with plain rules (degraded), so investigations keep working."""
 import json
 import logging
+import os
 import re
 
 from e2a import BaseAgent
@@ -59,10 +60,36 @@ def rule_intent(text: str) -> dict:
     return {"intent": intent, **{k: v for k, v in found.items() if v}}
 
 
+def sure_intent(text: str):
+    """The rules' reading of a request when it is unambiguous, else None (the model is then asked).
+
+    Unambiguous means a record id the request itself states AND the words that make the intent plain: a proposal
+    (write-off, refund, adjust, propose), an unmatched bank line, or a question about a settlement or order. Reading
+    these by rule instead of asking the model saves one of the two or three model calls of a request (12 to 23% of the
+    tokens on the simulated model; the live figures are in docs/EVALUATION_REPORT.md once measured) and cannot be wrong in the dangerous direction: the identifiers
+    are the ones in the text, and a proposal still waits for a second person. GENAI_INTENT_BY_RULES=false turns it
+    off, to compare."""
+    if os.getenv("GENAI_INTENT_BY_RULES", "true").lower() == "false":
+        return None
+    ruled = rule_intent(text)
+    if ruled["intent"] == "UNSUPPORTED":
+        return None
+    low = text.lower()
+    plain = (re.search(r"\b(propose|write[- ]?off|refund|adjust)", low)
+             or re.search(r"unmatched|exception|reconcil", low)
+             or re.search(r"\b(why|explain|status|delayed|failed|flagged|declined|paid)\b", low))
+    return ruled if plain else None
+
+
 class IntentAgent(BaseAgent):
     agent_name = 'IntentAgent'
 
     def _build_messages(self, state, ctx):
+        sure = sure_intent(str(state.get('query', '')))
+        if sure is not None:                       # no model step: the request says what it wants
+            state.update(sure)
+            state['intent_by'] = 'rules'
+            return None
         return [{'role': 'system', 'content': SYSTEM},
                 {'role': 'user', 'content': str(state.get('query', ''))}]
 
